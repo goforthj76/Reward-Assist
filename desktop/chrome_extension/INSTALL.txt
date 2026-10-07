@@ -1,0 +1,11 @@
+REWARDS ASSISTANT HELPER - ONE-TIME CHROME SETUP
+
+1. Open chrome://extensions in normal Google Chrome.
+2. Turn on Developer mode in the upper-right corner.
+3. Click Load unpacked.
+4. Select this folder:
+   C:\Users\gofor\Documents\Codex\2026-08-06\wh\outputs\rewards_assistant\chrome_extension
+5. Keep Rewards Assistant running while using Taco Bell or Wendy's guided setup.
+
+The extension only runs on the official Taco Bell and Wendy's pages and only
+reads a currently active task from Rewards Assistant on 127.0.0.1:8768.

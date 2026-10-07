@@ -1,0 +1,9 @@
+desktop/.venv/
+desktop/.pip-temp/
+desktop/__pycache__/
+desktop/build*/
+desktop/dist/
+desktop/pw-browsers/
+desktop/user_data/
+*.pyc
+
