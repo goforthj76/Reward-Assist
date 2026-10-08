@@ -22,6 +22,7 @@ import time
 import uuid
 import webbrowser
 import xml.etree.ElementTree as ET
+from gift_cards import apply_gift_card, validate_gift_card
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
@@ -56,12 +57,13 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.9"
+BUILD_VERSION = "0.5.16"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
 RELAYS: dict[str, dict[str, object]] = {}
 RELAYS_LOCK = threading.Lock()
+TACO_CHECKOUT_LOCK = threading.Lock()
 ALL_FIELDS = ("first_name", "last_name", "phone", "email", "zip_code", "birthday")
 DUTCH_REQUIRED = ALL_FIELDS
 WEB_REQUIRED = ("first_name", "last_name", "email", "zip_code", "birthday")
@@ -141,13 +143,16 @@ def parse_details(text: str, required: tuple[str, ...] = DUTCH_REQUIRED) -> dict
         line = raw.strip()
         if not line:
             continue
-        if line.upper() == "END":
+        if line.rstrip(" ;").upper() == "END":
             saw_end = True
             break
         if ":" not in line:
             raise ValueError(f"Expected key: value, but found {line!r}")
         key, value = line.split(":", 1)
         values[key.strip().casefold()] = value.strip()
+    # Gift cards belong only to the checkout request, never persisted signup tasks.
+    values.pop("gift_card_number", None)
+    values.pop("gift_card_pin", None)
     missing = [key for key in required if not values.get(key)]
     if missing:
         raise ValueError("Missing: " + ", ".join(missing))
@@ -171,7 +176,7 @@ def parse_detail_blocks(text: str, required: tuple[str, ...]) -> list[dict[str, 
     current: list[str] = []
     for raw in text.splitlines():
         current.append(raw)
-        if raw.strip().upper() == "END":
+        if raw.strip().rstrip(" ;").upper() == "END":
             blocks.append(parse_details("\n".join(current), required))
             current = []
     if any(line.strip() for line in current):
@@ -261,8 +266,12 @@ def adb_target(adb: str, serial: str, *args: str) -> list[str]:
 def _taco_ui(adb: str, serial: str) -> ET.Element:
     subprocess.run(adb_target(adb, serial, "shell", "uiautomator", "dump", "/sdcard/reward-assist.xml"),
                    check=True, capture_output=True, text=True, timeout=20)
-    result = subprocess.run(adb_target(adb, serial, "shell", "cat", "/sdcard/reward-assist.xml"),
-                            check=True, capture_output=True, text=True, timeout=15)
+    try:
+        result = subprocess.run(adb_target(adb, serial, "shell", "cat", "/sdcard/reward-assist.xml"),
+                                check=True, capture_output=True, text=True, timeout=15)
+    finally:
+        subprocess.run(adb_target(adb, serial, "shell", "rm", "-f", "/sdcard/reward-assist.xml"),
+                       capture_output=True, timeout=15)
     return ET.fromstring(result.stdout)
 
 
@@ -273,10 +282,14 @@ def _bounds_center(bounds: str) -> tuple[int, int]:
     return ((numbers[0] + numbers[2]) // 2, (numbers[1] + numbers[3]) // 2)
 
 
-def _taco_tap(adb: str, serial: str, *, text: str = "", resource_id: str = "") -> bool:
+def _taco_tap(adb: str, serial: str, *, text: str = "", resource_id: str = "", topmost: bool = False) -> bool:
     root = _taco_ui(adb, serial)
     parents = {child: parent for parent in root.iter() for child in parent}
-    for node in root.iter("node"):
+    nodes = list(root.iter("node"))
+    if topmost:
+        nodes = [node for node in nodes if node.attrib.get("bounds") and node.attrib.get("enabled") != "false"]
+        nodes.sort(key=lambda node: (_bounds_center(node.attrib["bounds"])[1], _bounds_center(node.attrib["bounds"])[0]))
+    for node in nodes:
         if text and node.attrib.get("text", "").casefold() != text.casefold():
             continue
         if resource_id and node.attrib.get("resource-id", "") != resource_id:
@@ -296,8 +309,51 @@ def _taco_texts(adb: str, serial: str) -> list[str]:
     return [node.attrib.get("text", "") for node in _taco_ui(adb, serial).iter("node") if node.attrib.get("text")]
 
 
+def start_taco_signin(serial: str, email: str) -> dict[str, object]:
+    if not serial or not re.fullmatch(r"[A-Za-z0-9._+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", email):
+        raise ValueError("Select an Android device and enter a supported email address.")
+    status = device_status(serial)
+    if not status.get("ok"):
+        return status
+    adb = find_adb()
+    subprocess.run(adb_target(adb, serial, "shell", "monkey", "-p", "com.tacobell.ordering",
+                              "-c", "android.intent.category.LAUNCHER", "1"),
+                   check=True, capture_output=True, timeout=20)
+    time.sleep(2)
+    root = _taco_ui(adb, serial)
+    texts = [n.attrib.get("text", "") for n in root.iter("node")]
+    if "Email Address" not in texts:
+        _taco_tap(adb, serial, text="Sign In")
+        root = _taco_ui(adb, serial)
+    texts = [n.attrib.get("text", "") for n in root.iter("node")]
+    fields = [n for n in root.iter("node") if n.attrib.get("class") == "android.widget.EditText"
+              and n.attrib.get("package") == "com.tacobell.ordering"]
+    if "Email Address" not in texts or "NEXT" not in texts or len(fields) != 1 or fields[0].attrib.get("resource-id") != "input_field":
+        raise ValueError("Open Taco Bell's email Sign In screen on Android, then click Retry Android sign-in. Sign out of any previous account first.")
+    x, y = _bounds_center(fields[0].attrib["bounds"])
+    def entry(*args):
+        try:
+            subprocess.run(adb_target(adb, serial, "shell", "input", *args), check=True, capture_output=True, timeout=15)
+        except (subprocess.SubprocessError, OSError):
+            raise ValueError("Android sign-in entry was interrupted. Check the device before retrying.") from None
+    entry("tap", str(x), str(y))
+    entry("keyevent", "KEYCODE_MOVE_END")
+    entry("keyevent", *(["KEYCODE_DEL"] * 254))
+    entry("text", email)
+    root = _taco_ui(adb, serial)
+    if not any(n.attrib.get("class") == "android.widget.EditText" and n.attrib.get("text") == email for n in root.iter("node")):
+        raise ValueError("Email entry could not be verified. Complete Android sign-in manually.")
+    entry("keyevent", "KEYCODE_BACK")
+    if not _taco_tap(adb, serial, text="NEXT"):
+        raise ValueError("Email entered. Tap NEXT in Taco Bell to continue sign-in.")
+    return {"ok": True, "stage": "verification_required", "message": "Email submitted to Taco Bell on Android. Complete its verification or sign-in prompts on the device, then confirm the account before preparing checkout."}
+
+
 def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object]:
     """Prepare one authorized Taco Bell reward order and stop before PLACE ORDER."""
+    if plan.get("checkout_confirmed") is not True:
+        raise ValueError("Confirm the selected account and checkout preparation first.")
+    card = validate_gift_card(plan.get("gift_card"))
     status = device_status(serial)
     if not status.get("ok"):
         return status
@@ -310,6 +366,8 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
     if package not in packages:
         raise ValueError("Install the official Taco Bell app on the selected Android device first.")
     reward = str(plan.get("reward", "")).strip()
+    if reward == "Beef Soft Taco":
+        reward = "Soft Taco"
     allowed_rewards = {"Soft Taco", "Cantina Chicken Crispy Taco", "Beefy 5-Layer Burrito"}
     if reward not in allowed_rewards:
         raise ValueError("Choose Soft Taco, Cantina Chicken Crispy Taco, or Beefy 5-Layer Burrito.")
@@ -328,8 +386,9 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
                    check=True, capture_output=True, text=True, timeout=20)
     time.sleep(2)
     texts = _taco_texts(adb, serial)
-    if "PLACE ORDER" in texts:
-        return {"ok": True, "stage": "final_review", "message": "Order is already ready for final review. PLACE ORDER was not pressed."}
+    if "PLACE ORDER" in texts or (card and ("Taco Bell Gift Card Number *" in texts or "Select Payment Method" in texts)):
+        message = apply_gift_card(adb, serial, card, _taco_ui, _taco_tap, _bounds_center)
+        return {"ok": True, "stage": "final_review", "message": (message or "Order is already ready for final review.") + " PLACE ORDER was not pressed."}
     if "Free Welcome Reward" not in texts:
         _taco_tap(adb, serial, text="Rewards")
     if not _taco_tap(adb, serial, text="Redeem"):
@@ -350,7 +409,7 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
             subprocess.run(adb_target(adb, serial, "shell", "input", "text", token), timeout=10)
         subprocess.run(adb_target(adb, serial, "shell", "input", "keyevent", "66"), check=True, timeout=10)
         time.sleep(3)
-        if not _taco_tap(adb, serial, text="PICKUP HERE"):
+        if not _taco_tap(adb, serial, text="PICKUP HERE", topmost=True):
             raise ValueError("No pickup store was available for that location.")
         _taco_tap(adb, serial, text="Redeem")
     if not _taco_tap(adb, serial, text=reward):
@@ -387,8 +446,9 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
     texts = _taco_texts(adb, serial)
     if "PLACE ORDER" not in texts:
         raise ValueError("Checkout did not reach the final review screen.")
+    card_message = apply_gift_card(adb, serial, card, _taco_ui, _taco_tap, _bounds_center)
     return {"ok": True, "stage": "final_review", "message":
-            f"{reward} is prepared for {pickup_method} at {location}, pickup {requested_time}. Total and store are visible for review. If Taco Bell requires a payment method, add it manually in the official app. PLACE ORDER was not pressed."}
+            f"{reward} is prepared for {pickup_method} at {location}, pickup {requested_time}. " + (card_message or "Total and store are visible for review. Add any required payment method in Taco Bell.") + " PLACE ORDER was not pressed."}
 
 
 def device_status(serial: str = "") -> dict[str, object]:
@@ -666,6 +726,10 @@ def poll_relay(app: str, session_root: Path) -> None:
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
 
@@ -1055,12 +1119,40 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 self.send_json(200, {"ok": True, "message": "Paris Baguette opened on the authorized Android device for the live signup test."})
                 return
+            if self.path == "/api/web/cancel":
+                app = str(payload.get("app", ""))
+                if app != "Taco Bell":
+                    raise ValueError("Choose Taco Bell to end this group.")
+                # Match the lowercase slug used by the signup/status endpoints.
+                session_root = WEB_SESSION_ROOT / "taco-bell"
+                session_root.mkdir(parents=True, exist_ok=True)
+                (session_root / "task.json").write_text(json.dumps({"active": False}), encoding="utf-8")
+                cancel_relay(app)
+                (session_root / "status.json").write_text(json.dumps({
+                    "stage": "idle", "message": "Group ended. Any open checkout remains in Taco Bell."
+                }), encoding="utf-8")
+                self.send_json(200, {"ok": True})
+                return
+            if self.path == "/api/taco/signin":
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("Another Android action is running. Wait for it to finish.")
+                try:
+                    result = start_taco_signin(str(payload.get("device_serial", "")).strip(), str(payload.get("email", "")).strip())
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200 if result.get("ok") else 409, result)
+                return
             if self.path == "/api/taco/prepare":
                 serial = str(payload.get("device_serial", "")).strip()
                 plan = payload.get("plan")
                 if not isinstance(plan, dict):
                     raise ValueError("A Taco Bell order plan is required.")
-                result = prepare_taco_order(serial, plan)
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("A checkout is already being prepared. Wait for it to finish.")
+                try:
+                    result = prepare_taco_order(serial, plan)
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
                 self.send_json(200 if result.get("ok") else 409, result)
                 return
             if self.path == "/api/extension/status":
@@ -1076,6 +1168,17 @@ class Handler(SimpleHTTPRequestHandler):
                     "updatedAt": dt.datetime.now().isoformat(),
                 }
                 existing_status_path = session_root / "status.json"
+                task_path = session_root / "task.json"
+                current_task = json.loads(task_path.read_text(encoding="utf-8")) if task_path.exists() else {}
+                if not current_task.get("active"):
+                    self.send_json(200, {"ok": True, "ignored": True})
+                    return
+                if status["stage"] == "complete":
+                    completed_details = payload.get("details")
+                    expected_email = str(current_task.get("details", {}).get("email", "")).casefold()
+                    if not isinstance(completed_details, dict) or str(completed_details.get("email", "")).casefold() != expected_email:
+                        self.send_json(200, {"ok": True, "ignored": True})
+                        return
                 if existing_status_path.exists():
                     existing = json.loads(existing_status_path.read_text(encoding="utf-8"))
                     for key in ("batch_current", "batch_total", "submission_url"):

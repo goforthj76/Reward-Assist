@@ -1,0 +1,23 @@
+const {chromium}=require('playwright'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{
+const page=await browser.newPage(),requests=[],errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+await page.route('**/*',route=>{const u=new URL(route.request().url());if(u.pathname.startsWith('/api/')){const body=route.request().postDataJSON();if(body)requests.push({path:u.pathname,body});return route.fulfill({json:u.pathname==='/api/status'?{profiles:[],version:'0.5.13'}:u.pathname==='/api/web/status'?{stage:'waiting_code',message:'Test verification'}:{ok:true,message:'Test checkout prepared'}})}if(u.hostname==='sequence.test'){const name=u.pathname==='/'?'index.html':path.basename(u.pathname),file=path.join(__dirname,'../demo',name);if(fs.existsSync(file))return route.fulfill({path:file,contentType:name.endsWith('.js')?'text/javascript':'text/html'})}return route.fulfill({status:204,body:''})});
+await page.goto('http://sequence.test/');
+await page.evaluate(()=>{choose(document.querySelector('[data-brand="Taco Bell"]'));document.getElementById('detailsBlock').value='first_name: Scott\nlast_name: Smith\nemail: scott@example.com\nzip_code: 75022\nbirthday: 2000-10-08\ngift_card_number: 00001234\ngift_card_pin: 001\nEND\n\nfirst_name: Sam\nlast_name: Smith\nemail: sam@example.com\nzip_code: 75022\nbirthday: 1990-01-02\ngift_card_number: 00005678\ngift_card_pin: 002\nEND';detectTacoBatch(false);const device=document.getElementById('deviceSelect');device.add(new Option('Test','test-device'));device.value='test-device';document.getElementById('tacoWelcomeItem').value='Soft Taco';document.getElementById('tacoLocation').value='75022'});
+assert.equal(await page.locator('#tacoPickupTime option').count(),97);
+await page.selectOption('#tacoPickupTime','3:15 PM');
+assert.equal(await page.evaluate(()=>tacoPlan().pickup_time),'3:15 PM');
+await page.evaluate(()=>startSetup());
+const starts=()=>requests.filter(r=>r.path==='/api/web/start');
+assert.equal(starts().length,1);assert(starts()[0].body.details.includes('scott@example.com'));assert(!starts()[0].body.details.includes('sam@example.com'));assert(!starts()[0].body.details.includes('gift_card'));
+await page.evaluate(async()=>{clearInterval(statusTimer);await sequenceSignupComplete()});
+assert.equal(starts().length,1);assert.equal(requests.find(r=>r.path==='/api/taco/signin').body.email,'scott@example.com');
+await page.evaluate(()=>prepareTacoOrder());assert.equal(requests.filter(r=>r.path==='/api/taco/prepare').length,0);
+await page.evaluate(()=>{document.getElementById('confirmTacoCheckout').checked=true;return prepareTacoOrder()});
+let checkouts=requests.filter(r=>r.path==='/api/taco/prepare');assert.equal(checkouts[0].body.plan.gift_card.pin,'001');assert.equal(checkouts[0].body.plan.checkout_confirmed,true);assert.equal(starts().length,1);
+await page.evaluate(()=>nextTacoPerson());assert.equal(starts().length,2);assert(starts()[1].body.details.includes('sam@example.com'));assert(!starts()[1].body.details.includes('gift_card'));
+await page.evaluate(async()=>{clearInterval(statusTimer);await sequenceSignupComplete();document.getElementById('confirmTacoCheckout').checked=true;return prepareTacoOrder()});
+checkouts=requests.filter(r=>r.path==='/api/taco/prepare');assert.equal(checkouts[1].body.plan.gift_card.pin,'002');
+await page.evaluate(()=>nextTacoPerson());assert.equal(starts().length,2);assert(requests.some(r=>r.path==='/api/web/cancel'));assert.equal(await page.locator('#detailsBlock').isDisabled(),false);assert.deepEqual(errors,[]);
+console.log('PASS: two people, one signup at a time, correct gift card for each, confirmation required, explicit next, and group completion');
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
