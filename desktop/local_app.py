@@ -59,7 +59,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.21"
+BUILD_VERSION = "0.5.22"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -1144,6 +1144,18 @@ class Handler(SimpleHTTPRequestHandler):
                     "stage": "idle", "message": "Group ended. Any open checkout remains in Taco Bell."
                 }), encoding="utf-8")
                 self.send_json(200, {"ok": True})
+                return
+            if self.path == "/api/taco/reset":
+                serial = str(payload.get("device_serial", "")).strip()
+                if not serial or payload.get("previous_person_finished") is not True:
+                    raise ValueError("Confirm the previous person is finished and select an Android device.")
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("Wait for the current Android step to finish.")
+                try:
+                    clear_android_app_data("com.tacobell.ordering", "Taco Bell", serial)
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200, {"ok": True, "message": "Taco Bell Android data cleared for the next person."})
                 return
             if self.path == "/api/taco/verify":
                 serial = str(payload.get("device_serial", "")).strip()

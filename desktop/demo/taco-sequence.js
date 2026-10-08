@@ -59,6 +59,12 @@ async function startSequencePerson() {
     sequenceElement('continueTacoMain').hidden = true;
     sequenceElement('confirmTacoCheckout').checked = false;
     sequenceElement('tacoCheckoutAccount').value = person.email;
+    if (run.resetPending) {
+      sequenceElement('automationStatus').textContent = 'Clearing the previous person’s Taco Bell Android data…';
+      await api('/api/taco/reset', {method:'POST', body:JSON.stringify({device_serial:run.serial, previous_person_finished:true})});
+      run.resetPending = false;
+      sequenceElement('automationStatus').textContent = 'Android reset complete. Starting this person’s website signup…';
+    }
     const result = await api('/api/web/start', {method:'POST', body:JSON.stringify({app:'Taco Bell', details:run.details[run.index]})});
     run.stage = 'signup';
     submissionUrl = result.submission_url || '';
@@ -93,12 +99,13 @@ async function nextTacoPerson() {
   if (!tacoSequence || tacoSequenceBusy || preparingTacoOrder) return;
   if (tacoSequence.stage === 'retry') return startSequencePerson();
   if (!['checkout','review'].includes(tacoSequence.stage)) return;
-  if (!confirm('Has this person finished? Verify their order was placed or cancelled in Taco Bell. Before continuing, sign out of their account on the Taco Bell website and Android app.')) return;
+  if (!confirm('Has this person finished? Verify their order was placed or cancelled in Taco Bell. Sign out of their account on the Taco Bell website. Continuing to another person will clear Taco Bell’s Android app data and sign out the previous person.')) return;
   if (tacoSequence.index + 1 === tacoSequence.people.length) {
     if (await endTacoSequence()) notify('Everyone in this group is finished.');
     return;
   }
   tacoSequence.index += 1;
+  tacoSequence.resetPending = true;
   tacoSequence.stage = 'ready';
   await startSequencePerson();
 }

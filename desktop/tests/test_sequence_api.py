@@ -42,6 +42,18 @@ class HouseholdApiTests(unittest.TestCase):
             launch.assert_called_once()
             self.assertIn('enter the email code', json.loads((self.session / 'status.json').read_text())['message'])
 
+    def test_next_person_reset_targets_only_selected_taco_app(self):
+        with patch.object(self.app, 'clear_android_app_data') as clear:
+            result = self.post('/api/taco/reset', {'device_serial': 'chosen-device', 'previous_person_finished': True})
+            self.assertEqual(result[0], 200)
+            clear.assert_called_once_with('com.tacobell.ordering', 'Taco Bell', 'chosen-device')
+
+    def test_reset_requires_finished_confirmation(self):
+        with patch.object(self.app, 'clear_android_app_data') as clear:
+            result = self.post('/api/taco/reset', {'device_serial': 'chosen-device'})
+            self.assertNotEqual(result[0], 200)
+            clear.assert_not_called()
+
     def test_cancel_stops_task_and_ignores_late_completion(self):
         self.task.write_text(json.dumps({'active': True, 'details': {'email': 'first@example.com'}}))
         self.assertEqual(self.post('/api/web/cancel', {'app': 'Taco Bell'})[0], 200)
