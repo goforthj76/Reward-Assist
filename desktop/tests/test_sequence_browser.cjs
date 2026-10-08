@@ -2,7 +2,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),path=require('node:
 (async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{
 let startMode='pending',pendingStart;
 const page=await browser.newPage(),requests=[],errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
-await page.route('**/*',route=>{const u=new URL(route.request().url());if(u.pathname.startsWith('/api/')){const body=route.request().postDataJSON();if(body)requests.push({path:u.pathname,body});if(u.pathname==='/api/web/start'&&startMode==='pending'){pendingStart=route;return;}return route.fulfill({json:u.pathname==='/api/status'?{profiles:[],version:'0.5.13'}:u.pathname==='/api/web/status'?{stage:'waiting_code',message:'Test verification'}:{ok:true,message:'Test checkout prepared'}})}if(u.hostname==='sequence.test'){const name=u.pathname==='/'?'index.html':path.basename(u.pathname),file=path.join(__dirname,'../demo',name);if(fs.existsSync(file))return route.fulfill({path:file,contentType:name.endsWith('.js')?'text/javascript':'text/html'})}return route.fulfill({status:204,body:''})});
+await page.route('**/*',route=>{const u=new URL(route.request().url());if(u.pathname.startsWith('/api/')){const body=route.request().postDataJSON();if(body)requests.push({path:u.pathname,body});if(u.pathname==='/api/web/start'&&startMode==='pending'){pendingStart=route;return;}return route.fulfill({json:u.pathname==='/api/status'?{profiles:[],version:'0.5.13'}:u.pathname==='/api/taco/verify'?{ok:true,stage:'signed_in',message:'Verified'}:u.pathname==='/api/web/status'?{stage:'waiting_code',message:'Test verification'}:{ok:true,message:'Test checkout prepared'}})}if(u.hostname==='sequence.test'){const name=u.pathname==='/'?'index.html':path.basename(u.pathname),file=path.join(__dirname,'../demo',name);if(fs.existsSync(file))return route.fulfill({path:file,contentType:name.endsWith('.js')?'text/javascript':'text/html'})}return route.fulfill({status:204,body:''})});
 await page.clock.install({time:new Date(2026,9,8,14,28)});
 await page.goto('http://sequence.test/');
 await page.evaluate(()=>{choose(document.querySelector('[data-brand="Taco Bell"]'));document.getElementById('detailsBlock').value='first_name: Scott\nlast_name: Smith\nemail: scott@example.com\nzip_code: 75022\nbirthday: 2000-10-08\ngift_card_number: 00001234\ngift_card_pin: 001\nEND\n\nfirst_name: Sam\nlast_name: Smith\nemail: sam@example.com\nzip_code: 75022\nbirthday: 1990-01-02\ngift_card_number: 00005678\ngift_card_pin: 002\nEND';detectTacoBatch(false);const device=document.getElementById('deviceSelect');device.add(new Option('Test','test-device'));device.value='test-device';document.getElementById('tacoWelcomeItem').value='Soft Taco';document.getElementById('tacoLocation').value='75022'});
@@ -29,7 +29,7 @@ assert.equal(requests.find(r=>r.path==='/api/web/code').body.code,'123456');
 const starts=()=>requests.filter(r=>r.path==='/api/web/start');
 assert.equal(starts().length,1);assert(starts()[0].body.details.includes('scott@example.com'));assert(!starts()[0].body.details.includes('sam@example.com'));assert(!starts()[0].body.details.includes('gift_card'));
 await page.evaluate(async()=>{clearInterval(statusTimer);await sequenceSignupComplete()});
-assert.match(await page.locator('#automationStatus').textContent(),/Complete verification on your Android device/);
+assert.match(await page.locator('#automationStatus').textContent(),/Paste the Android verification code/);
 assert.equal(await page.locator('#submissionButton').isVisible(),false);
 assert.equal(await page.locator('#codeControls').isVisible(),false);
 assert.equal(await page.locator('#continueTacoMain').isVisible(),true);
@@ -38,7 +38,10 @@ assert.equal(await page.locator('#progressFill').evaluate(el=>el.style.width),'7
 assert.equal(starts().length,1);assert.equal(requests.find(r=>r.path==='/api/taco/signin').body.email,'scott@example.com');
 await page.evaluate(()=>prepareTacoOrder());assert.equal(requests.filter(r=>r.path==='/api/taco/prepare').length,0);
 assert.equal(await page.locator('#manualTacoCheckout').isVisible(),false);
-await page.evaluate(()=>continueTacoMain());
+await page.locator('#androidVerificationCode').fill('123456');
+await page.evaluate(()=>verifyTacoAndroid());
+assert.equal(await page.locator('#androidVerificationCode').inputValue(),'');
+assert.equal(requests.find(r=>r.path==='/api/taco/verify').body.device_serial,'test-device');
 let checkouts=requests.filter(r=>r.path==='/api/taco/prepare');assert.equal(checkouts[0].body.plan.gift_card.pin,'001');assert.equal(checkouts[0].body.plan.checkout_confirmed,true);assert.equal(starts().length,1);
 await page.evaluate(()=>nextTacoPerson());assert.equal(starts().length,2);assert(starts()[1].body.details.includes('sam@example.com'));assert(!starts()[1].body.details.includes('gift_card'));
 await page.evaluate(async()=>{clearInterval(statusTimer);await sequenceSignupComplete();return continueTacoMain()});

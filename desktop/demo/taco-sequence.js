@@ -9,6 +9,7 @@ function sequenceMessage(message) {
   sequenceElement('tacoSequenceMessage').textContent = message;
 }
 function sequenceLock(locked) {
+  resetAndroidCode();
   sequenceElement("manualTacoCheckout").hidden = locked;
   if (!locked) sequenceElement("continueTacoMain").hidden = true;
   for (const selector of ['#detailsBlock', '#tacoBatchBuilder input', '#tacoBatchBuilder button',
@@ -42,6 +43,7 @@ async function startTacoSequence() {
 }
 async function startSequencePerson() {
   if (tacoSequenceBusy || !tacoSequence) return;
+  resetAndroidCode();
   tacoSequenceBusy = true;
   const run = tacoSequence, person = run.people[run.index];
   if (statusTimer) clearInterval(statusTimer);
@@ -125,6 +127,7 @@ async function prepareTacoOrder() {
     plan.checkout_confirmed = true;
     if (!serial || !plan.location || !plan.reward) throw new Error('Choose an Android device, reward, and pickup location.');
     if (plan.item) throw new Error('Additional menu items are not supported by this helper. Clear that field first.');
+    resetAndroidCode();
     preparingTacoOrder = true;
     sequenceElement('automationPanel').style.display = 'block';
     sequenceElement('automationStatus').textContent = 'Preparing this person’s checkout…';
@@ -150,7 +153,8 @@ async function retryTacoSignin() {
     sequenceElement('automationStatus').textContent = 'Opening Taco Bell on Android and entering this person’s email…';
     sequenceMessage('Opening Android sign-in for ' + person.email + '…');
     const result = await api('/api/taco/signin', {method:'POST', body:JSON.stringify({device_serial:tacoSequence.serial,email:person.email})});
-    sequenceElement('automationStatus').textContent = 'Complete verification on your Android device. Website signup is finished; Android sign-in is still waiting for you.';
+    sequenceElement('androidCodeControls').hidden = false;
+    sequenceElement('automationStatus').textContent = 'Paste the Android verification code from your email below, then click Verify on Android and continue.';
     sequenceMessage(person.email + ': ' + result.message);
     sequenceElement('automationPanel').scrollIntoView({block:'center'});
   } catch (error) {
@@ -167,4 +171,28 @@ async function continueTacoMain() {
   sequenceElement('confirmTacoCheckout').checked = true;
   try { await prepareTacoOrder(); }
   finally { button.disabled = false; }
+}
+
+function resetAndroidCode() {
+  sequenceElement('androidCodeControls').hidden = true;
+  sequenceElement('androidVerificationCode').value = '';
+}
+async function verifyTacoAndroid() {
+  if (!tacoSequence || tacoSequence.stage !== 'checkout' || tacoSequenceBusy || preparingTacoOrder) return;
+  const field = sequenceElement('androidVerificationCode'), code = field.value.trim();
+  if (!/^[0-9]{4,8}$/.test(code)) return notify('Paste the 4–8 digit Android verification code.');
+  tacoSequenceBusy = true;
+  sequenceElement('verifyAndroidButton').disabled = true;
+  let verified = false;
+  try {
+    sequenceElement('automationStatus').textContent = 'Entering the code on Android and checking verification…';
+    field.value = '';
+    const result = await api('/api/taco/verify', {method:'POST', body:JSON.stringify({device_serial:tacoSequence.serial, code})});
+    verified = result.stage === 'signed_in';
+    sequenceElement('automationStatus').textContent = result.message;
+    sequenceMessage(result.message);
+    if (verified) resetAndroidCode();
+  } catch (error) { sequenceElement('automationStatus').textContent = error.message; }
+  finally { tacoSequenceBusy = false; sequenceElement('verifyAndroidButton').disabled = false; }
+  if (verified) await continueTacoMain();
 }
