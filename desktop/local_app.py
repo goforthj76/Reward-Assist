@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from android_verification import verify_android_code
+from setup_checks import locate_adb
 
 import base64
 import ctypes
@@ -60,7 +61,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.25"
+BUILD_VERSION = "0.5.26"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -193,12 +194,8 @@ def parse_detail_blocks(text: str, required: tuple[str, ...]) -> list[dict[str, 
 
 
 def find_adb() -> str | None:
-    candidates = [
-        os.environ.get("ADB", ""),
-        str(Path(os.environ.get("LOCALAPPDATA", "")) / "Android/Sdk/platform-tools/adb.exe"),
-        shutil.which("adb") or "",
-    ]
-    return next((candidate for candidate in candidates if candidate and Path(candidate).exists()), None)
+    path = locate_adb()
+    return str(path) if path else None
 
 
 def find_chrome() -> Path | None:
@@ -361,6 +358,25 @@ def start_taco_signin(serial: str, email: str) -> dict[str, object]:
     if not _taco_tap(adb, serial, text="NEXT"):
         raise ValueError("Email entered. Tap NEXT in Taco Bell to continue sign-in.")
     return {"ok": True, "stage": "verification_required", "message": "Email submitted to Taco Bell on Android. Complete its verification or sign-in prompts on the device, then confirm the account before preparing checkout."}
+
+
+def submit_taco_order(serial: str) -> dict[str, object]:
+    """Submit once; keep a durable guard if confirmation is uncertain."""
+    adb = find_adb()
+    root = _taco_ui(adb, serial)
+    buttons = [n for n in root.iter("node") if n.get("package") == "com.tacobell.ordering"
+               and n.get("text", "").upper() == "PLACE ORDER" and n.get("enabled") != "false"]
+    if not buttons:
+        raise ValueError("Final PLACE ORDER button is not visible. No order was submitted.")
+    guard = DATA_ROOT / ("order-submission-" + re.sub(r"[^A-Za-z0-9_-]", "_", serial) + ".lock")
+    try:
+        with guard.open("x", encoding="utf-8") as handle:
+            handle.write(dt.datetime.now().isoformat())
+    except FileExistsError:
+        raise ValueError("An order submission was already attempted for this person. Check Taco Bell before continuing; automatic retry is disabled.") from None
+    if not _taco_tap(adb, serial, text="PLACE ORDER"):
+        raise ValueError("Submission could not be confirmed. Check Taco Bell; automatic retry is disabled.")
+    return {"ok": True, "stage": "submission_attempted", "message": "PLACE ORDER was pressed once. Check Taco Bell’s order confirmation before clicking Next person. Automatic resubmission is disabled."}
 
 
 def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object]:
@@ -1157,6 +1173,20 @@ class Handler(SimpleHTTPRequestHandler):
                 }), encoding="utf-8")
                 self.send_json(200, {"ok": True})
                 return
+            if self.path == "/api/taco/submit":
+                serial = str(payload.get("device_serial", "")).strip()
+                if payload.get("submit_confirmed") is not True or not serial:
+                    raise ValueError("Enable automatic order submission for this person first.")
+                if not device_status(serial).get("ok"):
+                    raise ValueError("The selected Android device is not connected.")
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("Wait for the current Android step to finish.")
+                try:
+                    result = submit_taco_order(serial)
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200, result)
+                return
             if self.path == "/api/taco/reset":
                 serial = str(payload.get("device_serial", "")).strip()
                 if not serial or payload.get("previous_person_finished") is not True:
@@ -1165,6 +1195,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Wait for the current Android step to finish.")
                 try:
                     clear_android_app_data("com.tacobell.ordering", "Taco Bell", serial)
+                    (DATA_ROOT / ("order-submission-" + re.sub(r"[^A-Za-z0-9_-]", "_", serial) + ".lock")).unlink(missing_ok=True)
                 finally:
                     TACO_CHECKOUT_LOCK.release()
                 self.send_json(200, {"ok": True, "message": "Taco Bell Android data cleared for the next person."})

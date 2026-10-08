@@ -44,6 +44,7 @@ async function startTacoSequence() {
 async function startSequencePerson() {
   if (tacoSequenceBusy || !tacoSequence) return;
   resetAndroidCode();
+  if (tacoSequence.index > 0) sequenceElement("autoPlaceOrder").checked = false;
   tacoSequenceBusy = true;
   const run = tacoSequence, person = run.people[run.index];
   if (statusTimer) clearInterval(statusTimer);
@@ -135,15 +136,21 @@ async function prepareTacoOrder() {
     if (!serial || !plan.location || !plan.reward) throw new Error('Choose an Android device, reward, and pickup location.');
     if (plan.item) throw new Error('Additional menu items are not supported by this helper. Clear that field first.');
     resetAndroidCode();
+    const autoSubmit = sequenceElement('autoPlaceOrder').checked;
+    sequenceElement('autoPlaceOrder').checked = false;
     preparingTacoOrder = true;
     sequenceElement('automationPanel').style.display = 'block';
     sequenceElement('automationStatus').textContent = 'Preparing this person’s checkout…';
     const result = await api('/api/taco/prepare', {method:'POST', body:JSON.stringify({device_serial:serial, plan})});
+    if (autoSubmit) {
+      const submitted = await api('/api/taco/submit', {method:'POST',body:JSON.stringify({device_serial:serial,submit_confirmed:true})});
+      result.message = submitted.message;
+    }
     sequenceElement('automationStatus').textContent = result.message;
     if (tacoSequence) {
       tacoSequence.stage = 'review';
       sequenceElement('continueTacoMain').hidden = true;
-      sequenceMessage('Review the gift card, total, and pickup store in Taco Bell. Place or cancel the order there, then click Next person.');
+      sequenceMessage(autoSubmit ? result.message : 'Review the gift card, total, and pickup store in Taco Bell. Place or cancel the order there, then click Next person.');
     }
     notify(result.message);
   } catch (error) { sequenceElement('automationStatus').textContent = error.message; if (tacoSequence) sequenceMessage(error.message); notify(error.message); }

@@ -54,6 +54,25 @@ class HouseholdApiTests(unittest.TestCase):
             self.assertNotEqual(result[0], 200)
             clear.assert_not_called()
 
+    def test_submission_is_guarded_against_duplicate_attempts(self):
+        root = ET.fromstring('<hierarchy><node package="com.tacobell.ordering" text="PLACE ORDER" enabled="true"/></hierarchy>')
+        self.app.DATA_ROOT.mkdir(parents=True, exist_ok=True)
+        with patch.object(self.app, 'find_adb', return_value='adb'), \
+             patch.object(self.app, '_taco_ui', return_value=root), \
+             patch.object(self.app, '_taco_tap', return_value=True) as tap:
+            self.assertEqual(self.app.submit_taco_order('device')['stage'], 'submission_attempted')
+            with self.assertRaisesRegex(ValueError, 'already attempted'):
+                self.app.submit_taco_order('device')
+            tap.assert_called_once()
+
+    def test_submission_requires_final_screen(self):
+        with patch.object(self.app, 'find_adb', return_value='adb'), \
+             patch.object(self.app, '_taco_ui', return_value=ET.Element('hierarchy')), \
+             patch.object(self.app, '_taco_tap') as tap:
+            with self.assertRaisesRegex(ValueError, 'not visible'):
+                self.app.submit_taco_order('device')
+            tap.assert_not_called()
+
     def test_cancel_stops_task_and_ignores_late_completion(self):
         self.task.write_text(json.dumps({'active': True, 'details': {'email': 'first@example.com'}}))
         self.assertEqual(self.post('/api/web/cancel', {'app': 'Taco Bell'})[0], 200)

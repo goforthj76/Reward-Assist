@@ -5,6 +5,8 @@ import shutil
 import subprocess
 import sys
 import tkinter as tk
+import threading
+from setup_checks import locate_adb, inspect_android
 from pathlib import Path
 from tkinter import messagebox
 
@@ -30,14 +32,7 @@ def find_chrome() -> Path | None:
 
 
 def find_adb() -> Path | None:
-    choices = [
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Android/Sdk/platform-tools/adb.exe",
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages/Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe/platform-tools/adb.exe",
-    ]
-    command = shutil.which("adb")
-    if command:
-        choices.insert(0, Path(command))
-    return next((path for path in choices if path.is_file()), None)
+    return locate_adb()
 
 
 def install_requirement(package_id: str, label: str, status: tk.StringVar, root: tk.Tk) -> None:
@@ -122,7 +117,7 @@ class SetupWindow:
 
         card = tk.Frame(self.root, bg="white", padx=30, pady=22)
         card.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-        tk.Label(card, text="Install everything in one step", bg="white", fg="#10213d",
+        tk.Label(card, text="Install, then finish setup", bg="white", fg="#10213d",
                  font=("Segoe UI", 18, "bold")).pack(anchor="w")
         tk.Label(card, text="Reward Assist includes its own runtime. Setup also checks the tools used\nfor Android connections before creating your shortcuts.",
                  bg="white", fg="#5f6d83", justify="left", font=("Segoe UI", 10)).pack(anchor="w", pady=(7, 18))
@@ -143,7 +138,7 @@ class SetupWindow:
                        font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(17, 2))
         tk.Checkbutton(card, text="Create a desktop shortcut", variable=self.desktop, bg="white",
                        activebackground="white", fg="#10213d", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
-        tk.Checkbutton(card, text="Open Reward Assist when setup finishes", variable=self.launch, bg="white",
+        tk.Checkbutton(card, text="Open Reward Assist after the setup guide", variable=self.launch, bg="white",
                        activebackground="white", fg="#10213d", font=("Segoe UI", 10)).pack(anchor="w")
         tk.Label(card, textvariable=self.status, bg="white", fg="#587087", font=("Segoe UI", 9)).pack(anchor="w", pady=(14, 4))
         self.install_button = tk.Button(card, text="Install Reward Assist", command=self.install, bg="#07152f",
@@ -170,6 +165,8 @@ class SetupWindow:
                     self.install_button.configure(state="normal")
                     self.status.set("Ready to install")
                     return
+            if self.install_missing.get() and (not find_chrome() or not find_adb()):
+                raise RuntimeError("Chrome or ADB could not be found after installation. Restart Windows, then run setup again.")
             self.status.set("Installing Reward Assist…")
             self.root.update_idletasks()
             source = bundled("Rewards Assistant.exe")
@@ -190,19 +187,96 @@ class SetupWindow:
                 make_shortcut(desktop_link, APP_EXE)
                 if not desktop_link.is_file():
                     raise RuntimeError(f"Windows did not create the desktop shortcut at {desktop_link}.")
-            self.status.set("Installation complete")
-            messagebox.showinfo(
-                "Reward Assist",
-                "Reward Assist is installed and ready.\n\n"
-                "A desktop shortcut was created. The browser helper and Android tools were checked too."
-            )
-            if self.launch.get():
-                subprocess.Popen([str(APP_EXE)], cwd=str(INSTALL_ROOT))
-            self.root.destroy()
+            (INSTALL_ROOT / "SETUP-GUIDE.txt").write_text(
+                "Reward Assist setup\n\nChrome extension\nOpen chrome://extensions in Chrome. Enable Developer mode, click Load unpacked, and select:\n"
+                + str(EXTENSION_ROOT)
+                + "\nConfirm Rewards Assistant Helper is enabled. If it is already listed, click its Reload button.\n\nAndroid\nInstall the official restaurant apps you plan to use from Google Play. Enable Developer options by tapping Build number seven times in Settings > About phone (the location varies by device). Enable USB debugging in Developer options. Connect a data-capable USB cable, unlock the device and allow the USB debugging prompt.\n\nKeep the device unlocked while using Reward Assist. If Windows cannot see it, install the USB driver provided by the device manufacturer.\n",
+                encoding="utf-8")
+            self.show_setup_guide()
         except Exception as exc:
             self.install_button.configure(state="normal")
             self.status.set("Installation could not finish")
             messagebox.showerror("Reward Assist Setup", str(exc))
+
+    def show_setup_guide(self) -> None:
+        for child in self.root.winfo_children():
+            child.destroy()
+        self.root.title("Reward Assist — Finish setup")
+        self.guide_step = 0
+        self.guide_frame = tk.Frame(self.root, bg="white", padx=24, pady=20)
+        self.guide_frame.pack(fill="both", expand=True)
+        self.draw_guide()
+
+    def guide_text(self, text, bold=False):
+        tk.Label(self.guide_frame, text=text, bg="white", fg="#10213d", justify="left",
+                 wraplength=550, font=("Segoe UI", 11, "bold" if bold else "normal")).pack(anchor="w", pady=8)
+
+    def open_extensions(self):
+        chrome = find_chrome()
+        if not chrome:
+            messagebox.showerror("Chrome missing", "Install Google Chrome, then open chrome://extensions.")
+            return
+        subprocess.Popen([str(chrome), "chrome://extensions/"])
+
+    def copy_extension_path(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(str(EXTENSION_ROOT))
+        self.guide_status.set("Folder path copied. Paste it into Chrome’s Load unpacked folder picker.")
+
+    def check_android(self):
+        self.check_button.configure(state="disabled")
+        self.guide_status.set("Checking USB connection and restaurant apps…")
+        def worker():
+            try:
+                adb = find_adb()
+                message = inspect_android(adb) if adb else "ADB is missing. Run setup again with automatic installation enabled."
+            except Exception as exc:
+                message = str(exc)
+            def done():
+                if self.guide_step == 1:
+                    self.guide_status.set(message)
+                    self.check_button.configure(state="normal")
+            self.root.after(0, done)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def guide_next(self):
+        self.guide_step += 1
+        self.draw_guide()
+
+    def draw_guide(self):
+        for child in self.guide_frame.winfo_children():
+            child.destroy()
+        self.guide_status = tk.StringVar()
+        self.guide_text(f"Finish setup — step {self.guide_step + 1} of 3", True)
+        if self.guide_step == 0:
+            self.guide_text("1. Enable the included Chrome extension", True)
+            self.guide_text("Needed for website signup. The extension files are installed, but Chrome requires you to enable them once.")
+            self.guide_text("Open Extensions → turn on Developer mode → Load unpacked → select the folder below. If Rewards Assistant Helper is already listed, click Reload and make sure it is enabled.")
+            self.guide_text(str(EXTENSION_ROOT))
+            tk.Button(self.guide_frame, text="Open Chrome Extensions", command=self.open_extensions).pack(anchor="w", pady=4)
+            tk.Button(self.guide_frame, text="Copy extension folder path", command=self.copy_extension_path).pack(anchor="w", pady=4)
+            self.guide_text("Chrome: " + ("installed" if find_chrome() else "missing") + "   •   ADB: " + ("installed" if find_adb() else "missing"))
+        elif self.guide_step == 1:
+            self.guide_text("2. Connect your Android device", True)
+            self.guide_text("In Android Settings → About phone, tap Build number seven times (its location varies). Then open Developer options and enable USB debugging.")
+            self.guide_text("Connect a data-capable USB cable. Unlock the device and tap Allow on its USB debugging prompt. Keep it unlocked while the assistant runs.")
+            self.guide_text("Install the official Taco Bell, Dutch Bros, or Paris Baguette app from Google Play—only the programs you plan to use.")
+            self.check_button = tk.Button(self.guide_frame, text="Check device and installed apps", command=self.check_android)
+            self.check_button.pack(anchor="w", pady=8)
+        else:
+            self.guide_text("3. Ready to open Reward Assist", True)
+            self.guide_text("Before starting signup, make sure the Chrome helper is enabled and your Android device is connected and authorized. Checks do not automatically verify that the extension is enabled.")
+            self.guide_text("You can finish configuration later. Instructions are saved beside the installed app as SETUP-GUIDE.txt. Android permissions and restaurant app installation must be completed on your device.")
+            tk.Button(self.guide_frame, text="Open saved setup instructions", command=lambda: os.startfile(INSTALL_ROOT / "SETUP-GUIDE.txt")).pack(anchor="w", pady=8)
+            tk.Button(self.guide_frame, text="Open Reward Assist" if self.launch.get() else "Finish setup", command=self.finish_setup, bg="#07152f", fg="white", padx=20, pady=12).pack(anchor="w", pady=12)
+        tk.Label(self.guide_frame, textvariable=self.guide_status, wraplength=550, justify="left", bg="white", fg="#26738b").pack(anchor="w", pady=8)
+        if self.guide_step < 2:
+            tk.Button(self.guide_frame, text="Next", command=self.guide_next, padx=24, pady=10).pack(side="bottom", anchor="e")
+
+    def finish_setup(self):
+        if self.launch.get():
+            subprocess.Popen([str(APP_EXE)], cwd=str(INSTALL_ROOT))
+        self.root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()

@@ -38,8 +38,12 @@ assert.equal(await page.locator('#progressFill').evaluate(el=>el.style.width),'7
 assert.equal(starts().length,1);assert.equal(requests.find(r=>r.path==='/api/taco/signin').body.email,'scott@example.com');
 await page.evaluate(()=>prepareTacoOrder());assert.equal(requests.filter(r=>r.path==='/api/taco/prepare').length,0);
 assert.equal(await page.locator('#manualTacoCheckout').isVisible(),false);
+await page.evaluate(()=>document.getElementById('autoPlaceOrder').checked=true);
 await page.locator('#androidVerificationCode').fill('123456');
 await page.evaluate(()=>verifyTacoAndroid());
+assert.equal(requests.filter(r=>r.path==='/api/taco/submit').length,1);
+assert.equal(requests.find(r=>r.path==='/api/taco/submit').body.submit_confirmed,true);
+assert.equal(await page.locator('#autoPlaceOrder').isChecked(),false);
 assert.equal(await page.locator('#androidVerificationCode').inputValue(),'');
 assert.equal(requests.find(r=>r.path==='/api/taco/verify').body.device_serial,'test-device');
 let checkouts=requests.filter(r=>r.path==='/api/taco/prepare');assert.equal(checkouts[0].body.plan.gift_card.pin,'001');assert.equal(checkouts[0].body.plan.checkout_confirmed,true);assert.equal(starts().length,1);
@@ -58,3 +62,4 @@ checkouts=requests.filter(r=>r.path==='/api/taco/prepare');assert.equal(checkout
 await page.evaluate(()=>nextTacoPerson());assert.equal(starts().length,2);assert(requests.some(r=>r.path==='/api/web/cancel'));assert.equal(await page.locator('#detailsBlock').isDisabled(),false);assert.equal(requests.filter(r=>r.path==='/api/taco/reset').length,2);assert.deepEqual(errors,[]);
 console.log('PASS: two people, one signup at a time, correct gift card for each, confirmation required, explicit next, and group completion');
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+
