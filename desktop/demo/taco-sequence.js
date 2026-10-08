@@ -8,6 +8,8 @@ function sequenceMessage(message) {
   sequenceElement('tacoSequenceMessage').textContent = message;
 }
 function sequenceLock(locked) {
+  sequenceElement("manualTacoCheckout").hidden = locked;
+  if (!locked) sequenceElement("continueTacoMain").hidden = true;
   for (const selector of ['#detailsBlock', '#tacoBatchBuilder input', '#tacoBatchBuilder button',
       '#tacoBatchBuilder select', '#tacoCheckoutAccount', '#deviceSelect', '.brand']) {
     document.querySelectorAll(selector).forEach(element => element.disabled = locked);
@@ -38,6 +40,7 @@ async function startSequencePerson() {
   const run = tacoSequence, person = run.people[run.index];
   try {
     sequenceElement('nextTacoPerson').hidden = true;
+    sequenceElement('continueTacoMain').hidden = true;
     sequenceElement('confirmTacoCheckout').checked = false;
     sequenceElement('tacoCheckoutAccount').value = person.email;
     const result = await api('/api/web/start', {method:'POST', body:JSON.stringify({app:'Taco Bell', details:run.details[run.index]})});
@@ -58,10 +61,11 @@ async function sequenceSignupComplete() {
   if (!tacoSequence || tacoSequence.stage !== 'signup') return;
   tacoSequence.stage = 'checkout';
   const person = tacoSequence.people[tacoSequence.index];
-  sequenceMessage(`${person.first_name} (${person.email}): website setup reported complete. Sign in to this account on Android, confirm the selected account, then click Prepare order on Android. The next person will wait.`);
+  sequenceMessage(`${person.first_name} (${person.email}): website setup reported complete. Complete sign-in on Android, then use the button below to prepare this person’s order.`);
   sequenceElement('nextTacoPerson').hidden = false;
   sequenceElement('nextTacoPerson').textContent = 'This person is finished — Next person';
   await retryTacoSignin();
+  sequenceElement("continueTacoMain").hidden = false;
 }
 async function nextTacoPerson() {
   if (!tacoSequence || tacoSequenceBusy || preparingTacoOrder) return;
@@ -108,6 +112,7 @@ async function prepareTacoOrder() {
     sequenceElement('automationStatus').textContent = result.message;
     if (tacoSequence) {
       tacoSequence.stage = 'review';
+      sequenceElement('continueTacoMain').hidden = true;
       sequenceMessage('Review the gift card, total, and pickup store in Taco Bell. Place or cancel the order there, then click Next person.');
     }
     notify(result.message);
@@ -126,4 +131,13 @@ async function retryTacoSignin() {
     sequenceMessage(person.email + ': ' + result.message);
   } catch (error) { sequenceMessage(error.message); }
   finally { tacoSequenceBusy = false; }
+}
+
+async function continueTacoMain() {
+  if (!tacoSequence || tacoSequence.stage !== 'checkout' || preparingTacoOrder || tacoSequenceBusy) return;
+  const button = sequenceElement('continueTacoMain');
+  button.disabled = true;
+  sequenceElement('confirmTacoCheckout').checked = true;
+  try { await prepareTacoOrder(); }
+  finally { button.disabled = false; }
 }

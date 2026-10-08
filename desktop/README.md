@@ -97,3 +97,6 @@ The Taco Bell section now uses three numbered steps. The When list scrolls throu
 
 ## Pickup times v0.5.17
 The list uses the Windows local clock, adds at least 15 minutes, then rounds up to a quarter hour. At 2:28 PM the first scheduled choice is 2:45 PM. Only remaining times today are listed; ASAP remains available. Stale selections revert to ASAP with a message. Restaurant availability is checked by Taco Bell.
+
+## Simpler MAIN (0.5.18)
+During MAIN, the separate account dropdown and checkbox are hidden. After website signup and Android sign-in prompts, click “I’m signed in — prepare my order” to confirm the current person and prepare their checkout. Review and submit the order in Taco Bell, then click Next person. Manual checkout is still available under an expandable section when MAIN is not running. Gift cards remain linked to each person. The mocked two-person browser workflow and timing tests passed; live authentication and order acceptance remain unverified.

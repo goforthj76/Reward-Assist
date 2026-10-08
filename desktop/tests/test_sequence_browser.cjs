@@ -14,10 +14,11 @@ assert.equal(starts().length,1);assert(starts()[0].body.details.includes('scott@
 await page.evaluate(async()=>{clearInterval(statusTimer);await sequenceSignupComplete()});
 assert.equal(starts().length,1);assert.equal(requests.find(r=>r.path==='/api/taco/signin').body.email,'scott@example.com');
 await page.evaluate(()=>prepareTacoOrder());assert.equal(requests.filter(r=>r.path==='/api/taco/prepare').length,0);
-await page.evaluate(()=>{document.getElementById('confirmTacoCheckout').checked=true;return prepareTacoOrder()});
+assert.equal(await page.locator('#manualTacoCheckout').isVisible(),false);
+await page.evaluate(()=>continueTacoMain());
 let checkouts=requests.filter(r=>r.path==='/api/taco/prepare');assert.equal(checkouts[0].body.plan.gift_card.pin,'001');assert.equal(checkouts[0].body.plan.checkout_confirmed,true);assert.equal(starts().length,1);
 await page.evaluate(()=>nextTacoPerson());assert.equal(starts().length,2);assert(starts()[1].body.details.includes('sam@example.com'));assert(!starts()[1].body.details.includes('gift_card'));
-await page.evaluate(async()=>{clearInterval(statusTimer);await sequenceSignupComplete();document.getElementById('confirmTacoCheckout').checked=true;return prepareTacoOrder()});
+await page.evaluate(async()=>{clearInterval(statusTimer);await sequenceSignupComplete();return continueTacoMain()});
 checkouts=requests.filter(r=>r.path==='/api/taco/prepare');assert.equal(checkouts[1].body.plan.gift_card.pin,'002');
 await page.evaluate(()=>nextTacoPerson());assert.equal(starts().length,2);assert(requests.some(r=>r.path==='/api/web/cancel'));assert.equal(await page.locator('#detailsBlock').isDisabled(),false);assert.deepEqual(errors,[]);
 console.log('PASS: two people, one signup at a time, correct gift card for each, confirmation required, explicit next, and group completion');

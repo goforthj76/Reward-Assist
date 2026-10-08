@@ -17,8 +17,8 @@ Local profiles and QR snapshots are intentionally excluded from Git. Optional Ta
 
 Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories, virtual environments, browser downloads, and user data remain untracked.
 
-## Windows v0.5.17
+## Windows v0.5.18
 
-[Download installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.17/Reward-Assist-Setup.exe) · [Download portable app](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.17/Reward-Assist-Windows.exe)
+[Download installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.18/Reward-Assist-Setup.exe) · [Download portable app](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.18/Reward-Assist-Windows.exe)
 
 Close all older Reward Assist windows before installing. This release corrects the version label and disables caching of the local app UI.
