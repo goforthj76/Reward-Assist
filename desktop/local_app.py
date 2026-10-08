@@ -57,7 +57,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.18"
+BUILD_VERSION = "0.5.19"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -1061,12 +1061,17 @@ class Handler(SimpleHTTPRequestHandler):
                     "created_at": dt.datetime.now().isoformat(timespec="seconds"),
                 }
                 (session_root / "task.json").write_text(json.dumps(task), encoding="utf-8")
-                submission_url = start_relay(app, details["email"])
+                try:
+                    submission_url = start_relay(app, details["email"])
+                except ValueError:
+                    # Remote code sharing is optional; manual code entry still works.
+                    submission_url = ""
                 (session_root / "status.json").write_text(json.dumps({
                     "stage": "waiting_extension",
                     "message": f"Opening Taco Bell account 1 of {len(queue)} in normal Chrome."
                     if len(queue) > 1 else
-                    "Opening normal Chrome. The Rewards Assistant extension will fill the official page.",
+                    "Opening normal Chrome. The Rewards Assistant extension will fill the official page. "
+                    + ("" if submission_url else "Protected verification page unavailable; enter the email code below when requested."),
                     "batch_current": 1,
                     "batch_total": len(queue),
                     "submission_url": submission_url,
@@ -1082,7 +1087,12 @@ class Handler(SimpleHTTPRequestHandler):
                 if helper:
                     browser_command.append(f"--load-extension={helper}")
                 browser_command.append(url)
-                subprocess.Popen(browser_command)
+                try:
+                    subprocess.Popen(browser_command)
+                except OSError as exc:
+                    task["active"] = False
+                    (session_root / "task.json").write_text(json.dumps(task), encoding="utf-8")
+                    raise ValueError("Chrome could not open. Check its installation, then retry this person.") from exc
                 self.send_json(200, {
                     "ok": True,
                     "url": url,

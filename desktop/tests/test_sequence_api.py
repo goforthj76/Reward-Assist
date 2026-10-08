@@ -30,6 +30,18 @@ class HouseholdApiTests(unittest.TestCase):
         self.app.Handler.do_POST(handler)
         return handler.send_json.call_args.args
 
+    def test_relay_failure_still_opens_chrome_with_manual_verification(self):
+        with patch.object(self.app, 'find_chrome', return_value=Path('chrome.exe')), \
+             patch.object(self.app, 'find_browser_helper', return_value=None), \
+             patch.object(self.app, 'start_relay', side_effect=ValueError('Offline')), \
+             patch.object(self.app.subprocess, 'Popen') as launch:
+            result = self.post('/api/web/start', {'app': 'Taco Bell', 'details':
+                'first_name: Alex\nlast_name: Example\nemail: alex@example.com\nzip_code: 75022\nbirthday: 1990-01-01\nEND'})
+            self.assertEqual(result[0], 200)
+            self.assertEqual(result[1]['submission_url'], '')
+            launch.assert_called_once()
+            self.assertIn('enter the email code', json.loads((self.session / 'status.json').read_text())['message'])
+
     def test_cancel_stops_task_and_ignores_late_completion(self):
         self.task.write_text(json.dumps({'active': True, 'details': {'email': 'first@example.com'}}))
         self.assertEqual(self.post('/api/web/cancel', {'app': 'Taco Bell'})[0], 200)

@@ -32,12 +32,25 @@ async function startTacoSequence() {
       serial:sequenceElement('deviceSelect').value, stage:'ready'};
     sequenceLock(true);
     await startSequencePerson();
-  } catch (error) { notify(error.message); }
+  } catch (error) {
+    sequenceElement('automationPanel').style.display = 'block';
+    sequenceElement('automationStatus').textContent = error.message;
+    sequenceElement('automationPanel').scrollIntoView({block:'center'});
+    notify(error.message);
+  }
 }
 async function startSequencePerson() {
   if (tacoSequenceBusy || !tacoSequence) return;
   tacoSequenceBusy = true;
   const run = tacoSequence, person = run.people[run.index];
+  if (statusTimer) clearInterval(statusTimer);
+  submissionUrl = '';
+  for (const id of ['submissionButton', 'codeControls', 'approveButton']) sequenceElement(id).style.display = 'none';
+  sequenceElement('automationPanel').style.display = 'block';
+  setProgress(5);
+  sequenceElement('automationStatus').textContent = `Starting person ${run.index + 1} of ${run.people.length}: checking Chrome and connecting the verification service. This may take up to a minute…`;
+  sequenceElement('automationPanel').scrollIntoView({block:'center'});
+  sequenceMessage(`Starting ${person.first_name} (${person.email})…`);
   try {
     sequenceElement('nextTacoPerson').hidden = true;
     sequenceElement('continueTacoMain').hidden = true;
@@ -54,6 +67,8 @@ async function startSequencePerson() {
     run.stage = 'retry';
     sequenceElement('nextTacoPerson').hidden = false;
     sequenceElement('nextTacoPerson').textContent = 'Retry this person';
+    setProgress(0);
+    sequenceElement('automationStatus').textContent = 'Could not start: ' + error.message + ' Use Retry this person below.';
     sequenceMessage(error.message);
   } finally { tacoSequenceBusy = false; }
 }
