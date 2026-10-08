@@ -146,7 +146,7 @@ async function prepareTacoOrder() {
       sequenceMessage('Review the gift card, total, and pickup store in Taco Bell. Place or cancel the order there, then click Next person.');
     }
     notify(result.message);
-  } catch (error) { sequenceElement('automationStatus').textContent = error.message; notify(error.message); }
+  } catch (error) { sequenceElement('automationStatus').textContent = error.message; if (tacoSequence) sequenceMessage(error.message); notify(error.message); }
   finally { preparingTacoOrder = false; sequenceElement('confirmTacoCheckout').checked = false; }
 }
 

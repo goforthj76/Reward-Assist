@@ -60,7 +60,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.24"
+BUILD_VERSION = "0.5.25"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -293,13 +293,15 @@ def _taco_tap(adb: str, serial: str, *, text: str = "", resource_id: str = "", t
         nodes = [node for node in nodes if node.attrib.get("bounds") and node.attrib.get("enabled") != "false"]
         nodes.sort(key=lambda node: (_bounds_center(node.attrib["bounds"])[1], _bounds_center(node.attrib["bounds"])[0]))
     for node in nodes:
-        if text and node.attrib.get("text", "").casefold() != text.casefold():
+        if text and text.casefold() not in {node.attrib.get("text", "").casefold(), node.attrib.get("content-desc", "").casefold()}:
             continue
         if resource_id and node.attrib.get("resource-id", "") != resource_id:
             continue
         target = node
         while target.attrib.get("clickable") != "true" and target in parents:
             target = parents[target]
+        if target.attrib.get("clickable") != "true":
+            target = node
         x, y = _bounds_center(target.attrib.get("bounds", node.attrib.get("bounds", "")))
         run_hidden(adb_target(adb, serial, "shell", "input", "tap", str(x), str(y)),
                        check=True, capture_output=True, text=True, timeout=10)
@@ -401,9 +403,9 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
     if "PLACE ORDER" in texts or (card and ("Taco Bell Gift Card Number *" in texts or "Select Payment Method" in texts)):
         message = apply_gift_card(adb, serial, card, _taco_ui, _taco_tap, _bounds_center)
         return {"ok": True, "stage": "final_review", "message": (message or "Order is already ready for final review.") + " PLACE ORDER was not pressed."}
-    if "Free Welcome Reward" not in texts:
+    if "Choose Reward" not in texts and "Free Welcome Reward" not in texts:
         _taco_tap(adb, serial, text="Rewards")
-    if not _taco_tap(adb, serial, text="Redeem"):
+    if "Choose Reward" not in texts and not _taco_tap(adb, serial, text="Redeem"):
         raise ValueError("The Free Welcome Reward is not available or is already applied.")
     if "Choose Your Pickup Location" in _taco_texts(adb, serial):
         _taco_tap(adb, serial, text="SELECT STORE")
@@ -425,7 +427,7 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
             raise ValueError("No pickup store was available for that location.")
         _taco_tap(adb, serial, text="Redeem")
     if not _taco_tap(adb, serial, text=reward):
-        raise ValueError(f"{reward} is not available at the selected store.")
+        raise ValueError(f"Could not locate {reward} on the reward screen. Check the available choices in Taco Bell, then retry.")
     if not _taco_tap(adb, serial, text="ADD TO BAG"):
         raise ValueError("Taco Bell did not enable Add to Bag for the selected reward.")
     if not _taco_tap(adb, serial, text="MY BAG"):

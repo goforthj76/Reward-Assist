@@ -111,6 +111,14 @@ class HouseholdApiTests(unittest.TestCase):
                 self.app.start_taco_signin('device', 'test@example.com')
             self.assertEqual(run.call_count, 1)  # Launch only; no credential entry.
 
+    def test_reward_accessibility_label_uses_clickable_parent(self):
+        root = ET.fromstring('<hierarchy><node clickable="true" bounds="[20,600][300,900]"><node text="" content-desc="Cantina Chicken Crispy Taco" bounds="[24,627][294,897]"/></node></hierarchy>')
+        with patch.object(self.app, '_taco_ui', return_value=root), \
+             patch.object(self.app.subprocess, 'run') as run, \
+             patch.object(self.app.time, 'sleep'):
+            self.assertTrue(self.app._taco_tap('adb', 'device', text='Cantina Chicken Crispy Taco'))
+            self.assertEqual(run.call_args.args[0][-2:], ['160', '750'])
+
     def test_pickup_selects_top_result_not_xml_order(self):
         root = ET.fromstring('<hierarchy><node text="PICKUP HERE" clickable="true" bounds="[0,600][100,650]"/>'
                              '<node text="PICKUP HERE" clickable="true" bounds="[0,200][100,250]"/></hierarchy>')
