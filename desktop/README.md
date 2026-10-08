@@ -94,3 +94,6 @@ Nine Python tests and the browser sequence test passed. The Android email form w
 ## Simpler pickup layout (0.5.14)
 
 The Taco Bell section now uses three numbered steps. The When list scrolls through ASAP and 96 quarter-hour times. Choose the restaurant’s local time; listed times are choices, not confirmed availability. Gift-card instructions and recovery actions are expandable. The unsupported additional-menu-item field is hidden and no longer restored from old saved plans. Browser checks verify 97 options and that 3:15 PM reaches the order plan. The updated layout was visually inspected.
+
+## Pickup times v0.5.17
+The list uses the Windows local clock, adds at least 15 minutes, then rounds up to a quarter hour. At 2:28 PM the first scheduled choice is 2:45 PM. Only remaining times today are listed; ASAP remains available. Stale selections revert to ASAP with a message. Restaurant availability is checked by Taco Bell.
