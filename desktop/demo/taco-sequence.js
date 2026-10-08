@@ -4,6 +4,7 @@ let tacoSequenceBusy = false;
 const sequenceElement = id => document.getElementById(id);
 
 function sequenceMessage(message) {
+  sequenceElement('automationPanel').append(sequenceElement('tacoSequencePanel'));
   sequenceElement('tacoSequencePanel').hidden = false;
   sequenceElement('tacoSequenceMessage').textContent = message;
 }
@@ -75,6 +76,10 @@ async function startSequencePerson() {
 async function sequenceSignupComplete() {
   if (!tacoSequence || tacoSequence.stage !== 'signup') return;
   tacoSequence.stage = 'checkout';
+  submissionUrl = '';
+  for (const id of ['submissionButton', 'codeControls', 'approveButton']) sequenceElement(id).style.display = 'none';
+  setProgress(70);
+  sequenceElement('automationStatus').textContent = 'Website signup finished. Starting Android sign-in…';
   const person = tacoSequence.people[tacoSequence.index];
   sequenceMessage(`${person.first_name} (${person.email}): website setup reported complete. Complete sign-in on Android, then use the button below to prepare this person’s order.`);
   sequenceElement('nextTacoPerson').hidden = false;
@@ -141,10 +146,17 @@ async function retryTacoSignin() {
   const person = tacoSequence.people[tacoSequence.index];
   sequenceElement('confirmTacoCheckout').checked = false;
   try {
+    setProgress(70);
+    sequenceElement('automationStatus').textContent = 'Opening Taco Bell on Android and entering this person’s email…';
     sequenceMessage('Opening Android sign-in for ' + person.email + '…');
     const result = await api('/api/taco/signin', {method:'POST', body:JSON.stringify({device_serial:tacoSequence.serial,email:person.email})});
+    sequenceElement('automationStatus').textContent = 'Complete verification on your Android device. Website signup is finished; Android sign-in is still waiting for you.';
     sequenceMessage(person.email + ': ' + result.message);
-  } catch (error) { sequenceMessage(error.message); }
+    sequenceElement('automationPanel').scrollIntoView({block:'center'});
+  } catch (error) {
+    sequenceElement('automationStatus').textContent = 'Android sign-in needs attention: ' + error.message;
+    sequenceMessage(error.message);
+  }
   finally { tacoSequenceBusy = false; }
 }
 
