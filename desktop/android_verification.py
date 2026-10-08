@@ -1,6 +1,7 @@
 """Enter a user-supplied code only on the recognized Taco Bell verification screen."""
 import re
 import subprocess
+from background_process import run_hidden, minimized_browser_options
 import time
 
 
@@ -16,7 +17,7 @@ def verify_android_code(adb, serial, code, read_ui, tap, center, target):
         raise ValueError("Android is not on Taco Bell’s email-code screen. No code was entered.")
     def entry(*args):
         try:
-            subprocess.run(target(adb, serial, "shell", "input", *args), check=True,
+            run_hidden(target(adb, serial, "shell", "input", *args), check=True,
                            capture_output=True, timeout=15)
         except (subprocess.SubprocessError, OSError):
             raise ValueError("Code entry was interrupted. Check the Android connection and retry.") from None
@@ -38,6 +39,11 @@ def verify_android_code(adb, serial, code, read_ui, tap, center, target):
         texts = {n.get("text", "") for n in root.iter("node") if n.get("package") == package}
         if any(re.search(r"invalid|expired|incorrect|try again", text, re.I) for text in texts):
             raise ValueError("Taco Bell did not accept the code. Paste the latest email code and retry.")
-        if "Verify Your Email" not in texts and "Free Welcome Reward" in texts:
+        descriptions = {n.get("content-desc", "") for n in root.iter("node") if n.get("package") == package}
+        signed_in_home = ({"Home", "Rewards", "START YOUR ORDER"}.issubset(texts)
+                          and "User's Initials" in descriptions
+                          and any(re.match(r"Good (Morning|Afternoon|Evening), .+", text) for text in texts)
+                          and "Sign In" not in texts)
+        if "Verify Your Email" not in texts and ("Free Welcome Reward" in texts or signed_in_home):
             return {"ok": True, "stage": "signed_in", "message": "Android verification finished. Preparing this person’s order…"}
     return {"ok": True, "stage": "verification_unconfirmed", "message": "Code submitted, but sign-in could not be confirmed. If Android is signed in, use the continue button; otherwise retry with the latest code."}

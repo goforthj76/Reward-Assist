@@ -36,3 +36,11 @@ class VerificationTests(unittest.TestCase):
     def test_unknown_screen_does_not_claim_success(self):
         result=self.call_verify([screen(),screen('001234')]+[ET.Element('hierarchy')]*6)
         self.assertEqual(result['stage'],'verification_unconfirmed')
+
+    def test_personalized_home_confirms_signin_without_reward_banner(self):
+        root=ET.fromstring("<hierarchy><node package='com.tacobell.ordering' text='Home'/><node package='com.tacobell.ordering' text='Rewards'/><node package='com.tacobell.ordering' text='START YOUR ORDER'/><node package='com.tacobell.ordering' content-desc='User&apos;s Initials'/><node package='com.tacobell.ordering' text='Good Afternoon, Alex Example'/></hierarchy>")
+        self.assertEqual(self.call_verify([screen(),screen('001234'),root])['stage'],'signed_in')
+    def test_signed_out_home_never_confirms_signin(self):
+        root=ET.fromstring("<hierarchy><node package='com.tacobell.ordering' text='Home'/><node package='com.tacobell.ordering' text='Rewards'/><node package='com.tacobell.ordering' text='START YOUR ORDER'/><node package='com.tacobell.ordering' text='Sign In'/></hierarchy>")
+        self.assertEqual(self.call_verify([screen(),screen('001234')]+[root]*6)['stage'],'verification_unconfirmed')
+

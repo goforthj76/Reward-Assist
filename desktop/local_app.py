@@ -17,6 +17,7 @@ import re
 import shutil
 import socket
 import subprocess
+from background_process import run_hidden, minimized_browser_options
 import sys
 import tempfile
 import threading
@@ -59,7 +60,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.23"
+BUILD_VERSION = "0.5.24"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -244,8 +245,8 @@ def list_adb_devices() -> list[dict[str, str]]:
     if not adb:
         return []
     try:
-        subprocess.run([adb, "start-server"], check=True, capture_output=True, text=True, timeout=15)
-        result = subprocess.run([adb, "devices", "-l"], check=True, capture_output=True, text=True, timeout=15)
+        run_hidden([adb, "start-server"], check=True, capture_output=True, text=True, timeout=15)
+        result = run_hidden([adb, "devices", "-l"], check=True, capture_output=True, text=True, timeout=15)
         rows = [line.split() for line in result.stdout.splitlines()[1:] if line.strip()]
     except (subprocess.SubprocessError, OSError):
         return []
@@ -266,13 +267,13 @@ def adb_target(adb: str, serial: str, *args: str) -> list[str]:
 
 
 def _taco_ui(adb: str, serial: str) -> ET.Element:
-    subprocess.run(adb_target(adb, serial, "shell", "uiautomator", "dump", "/sdcard/reward-assist.xml"),
+    run_hidden(adb_target(adb, serial, "shell", "uiautomator", "dump", "/sdcard/reward-assist.xml"),
                    check=True, capture_output=True, text=True, timeout=20)
     try:
-        result = subprocess.run(adb_target(adb, serial, "shell", "cat", "/sdcard/reward-assist.xml"),
+        result = run_hidden(adb_target(adb, serial, "shell", "cat", "/sdcard/reward-assist.xml"),
                                 check=True, capture_output=True, text=True, timeout=15)
     finally:
-        subprocess.run(adb_target(adb, serial, "shell", "rm", "-f", "/sdcard/reward-assist.xml"),
+        run_hidden(adb_target(adb, serial, "shell", "rm", "-f", "/sdcard/reward-assist.xml"),
                        capture_output=True, timeout=15)
     return ET.fromstring(result.stdout)
 
@@ -300,7 +301,7 @@ def _taco_tap(adb: str, serial: str, *, text: str = "", resource_id: str = "", t
         while target.attrib.get("clickable") != "true" and target in parents:
             target = parents[target]
         x, y = _bounds_center(target.attrib.get("bounds", node.attrib.get("bounds", "")))
-        subprocess.run(adb_target(adb, serial, "shell", "input", "tap", str(x), str(y)),
+        run_hidden(adb_target(adb, serial, "shell", "input", "tap", str(x), str(y)),
                        check=True, capture_output=True, text=True, timeout=10)
         time.sleep(1.2)
         return True
@@ -318,7 +319,7 @@ def start_taco_signin(serial: str, email: str) -> dict[str, object]:
     if not status.get("ok"):
         return status
     adb = find_adb()
-    subprocess.run(adb_target(adb, serial, "shell", "monkey", "-p", "com.tacobell.ordering",
+    run_hidden(adb_target(adb, serial, "shell", "monkey", "-p", "com.tacobell.ordering",
                               "-c", "android.intent.category.LAUNCHER", "1"),
                    check=True, capture_output=True, timeout=20)
     time.sleep(2)
@@ -344,7 +345,7 @@ def start_taco_signin(serial: str, email: str) -> dict[str, object]:
     x, y = _bounds_center(fields[0].attrib["bounds"])
     def entry(*args):
         try:
-            subprocess.run(adb_target(adb, serial, "shell", "input", *args), check=True, capture_output=True, timeout=15)
+            run_hidden(adb_target(adb, serial, "shell", "input", *args), check=True, capture_output=True, timeout=15)
         except (subprocess.SubprocessError, OSError):
             raise ValueError("Android sign-in entry was interrupted. Check the device before retrying.") from None
     entry("tap", str(x), str(y))
@@ -372,7 +373,7 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
     if not adb:
         raise ValueError("ADB is not installed.")
     package = "com.tacobell.ordering"
-    packages = subprocess.run(adb_target(adb, serial, "shell", "pm", "list", "packages", package),
+    packages = run_hidden(adb_target(adb, serial, "shell", "pm", "list", "packages", package),
                               capture_output=True, text=True, timeout=20).stdout
     if package not in packages:
         raise ValueError("Install the official Taco Bell app on the selected Android device first.")
@@ -392,7 +393,7 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
     if requested_time.casefold() != "asap" and not re.fullmatch(r"(?:1[0-2]|[1-9]):[0-5]\d\s*(?:AM|PM)", requested_time, re.I):
         raise ValueError("Pickup time must be ASAP or a time such as 3:15 PM.")
 
-    subprocess.run(adb_target(adb, serial, "shell", "monkey", "-p", package,
+    run_hidden(adb_target(adb, serial, "shell", "monkey", "-p", package,
                               "-c", "android.intent.category.LAUNCHER", "1"),
                    check=True, capture_output=True, text=True, timeout=20)
     time.sleep(2)
@@ -411,14 +412,14 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
         if field is None:
             raise ValueError("Taco Bell did not expose its store search field.")
         x, y = _bounds_center(field.attrib["bounds"])
-        subprocess.run(adb_target(adb, serial, "shell", "input", "tap", str(x), str(y)), check=True, timeout=10)
-        subprocess.run(adb_target(adb, serial, "shell", "input", "keyevent", "123"), check=True, timeout=10)
+        run_hidden(adb_target(adb, serial, "shell", "input", "tap", str(x), str(y)), check=True, timeout=10)
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "123"), check=True, timeout=10)
         for _ in range(30):
-            subprocess.run(adb_target(adb, serial, "shell", "input", "keyevent", "67"), timeout=10)
+            run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "67"), timeout=10)
         for char in location:
             token = "%s" if char == " " else char
-            subprocess.run(adb_target(adb, serial, "shell", "input", "text", token), timeout=10)
-        subprocess.run(adb_target(adb, serial, "shell", "input", "keyevent", "66"), check=True, timeout=10)
+            run_hidden(adb_target(adb, serial, "shell", "input", "text", token), timeout=10)
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "66"), check=True, timeout=10)
         time.sleep(3)
         if not _taco_tap(adb, serial, text="PICKUP HERE", topmost=True):
             raise ValueError("No pickup store was available for that location.")
@@ -445,11 +446,11 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
             if _taco_tap(adb, serial, text=requested_time):
                 selected = True
                 break
-            subprocess.run(adb_target(adb, serial, "shell", "input", "swipe", "300", "860", "300", "720", "250"),
+            run_hidden(adb_target(adb, serial, "shell", "input", "swipe", "300", "860", "300", "720", "250"),
                            check=True, capture_output=True, text=True, timeout=10)
             time.sleep(0.4)
         if not selected:
-            subprocess.run(adb_target(adb, serial, "shell", "input", "keyevent", "4"), timeout=10)
+            run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "4"), timeout=10)
             raise ValueError(f"{requested_time} is not an available pickup time for this store.")
         if not _taco_tap(adb, serial, text="CONFIRM"):
             raise ValueError("The scheduled pickup time could not be confirmed.")
@@ -499,7 +500,7 @@ def reset_dutch_app(serial: str = "") -> dict[str, object]:
     if not adb:
         return {"ok": False, "message": "ADB is not installed."}
     try:
-        result = subprocess.run(
+        result = run_hidden(
             adb_target(adb, serial, "shell", "pm", "clear", "com.dutchbros.loyalty"),
             check=True, capture_output=True, text=True, timeout=25,
         )
@@ -529,7 +530,7 @@ def clear_android_app_data(package_name: str, app_name: str, serial: str = "") -
     adb = find_adb()
     if not adb:
         raise ValueError("ADB is not installed.")
-    result = subprocess.run(
+    result = run_hidden(
         adb_target(adb, serial, "shell", "pm", "clear", package_name),
         capture_output=True, text=True, timeout=25,
     )
@@ -547,7 +548,7 @@ def taco_device_status(serial: str = "") -> dict[str, object]:
         return {"ok": False, "message": "ADB is not installed."}
 
     def prop(name: str) -> str:
-        return subprocess.run(
+        return run_hidden(
             adb_target(adb, serial, "shell", "getprop", name), capture_output=True, text=True, timeout=15
         ).stdout.strip()
 
@@ -555,7 +556,7 @@ def taco_device_status(serial: str = "") -> dict[str, object]:
     sdk_text = prop("ro.build.version.sdk")
     abis = prop("ro.product.cpu.abilist")
     model = prop("ro.product.model") or "Android device"
-    packages = subprocess.run(
+    packages = run_hidden(
         adb_target(adb, serial, "shell", "pm", "list", "packages", "com.tacobell.ordering"),
         capture_output=True, text=True, timeout=20,
     ).stdout
@@ -969,7 +970,7 @@ class Handler(SimpleHTTPRequestHandler):
                     command.extend(["--qr-file", str(qr_temp)])
                 if resume_current:
                     command.append("--resume-current")
-                flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+                flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 try:
                     helper_env = os.environ.copy()
                     if serial:
@@ -1094,12 +1095,12 @@ class Handler(SimpleHTTPRequestHandler):
                     else "https://order.wendys.com/us/en/sign-in?lang=en_US&tab=offers"
                 )
                 helper = find_browser_helper()
-                browser_command = [str(browser)]
+                browser_command = [str(browser), "--new-window"]
                 if helper:
                     browser_command.append(f"--load-extension={helper}")
                 browser_command.append(url)
                 try:
-                    subprocess.Popen(browser_command)
+                    subprocess.Popen(browser_command, **minimized_browser_options())
                 except OSError as exc:
                     task["active"] = False
                     (session_root / "task.json").write_text(json.dumps(task), encoding="utf-8")
@@ -1124,17 +1125,17 @@ class Handler(SimpleHTTPRequestHandler):
                 if not adb:
                     raise ValueError("ADB is not installed.")
                 package_name = "com.parisbaguette.app"
-                packages = subprocess.run(
+                packages = run_hidden(
                     adb_target(adb, serial, "shell", "pm", "list", "packages", package_name),
                     capture_output=True, text=True, timeout=20,
                 ).stdout
                 if package_name not in packages:
-                    subprocess.Popen(adb_target(adb, serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", f"market://details?id={package_name}"))
+                    subprocess.Popen(adb_target(adb, serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", f"market://details?id={package_name}"), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                     self.send_json(409, {"ok": False, "message": "Paris Baguette is not installed. Its official Google Play listing is open on the connected Android device; install it, then retry."})
                     return
                 if payload.get("reset_existing") is True:
                     clear_android_app_data(package_name, "Paris Baguette", serial)
-                subprocess.run(
+                run_hidden(
                     adb_target(adb, serial, "shell", "monkey", "-p", package_name, "-c", "android.intent.category.LAUNCHER", "1"),
                     capture_output=True, text=True, timeout=20,
                 )

@@ -1,6 +1,7 @@
 """Session-only Taco Bell gift card entry. Never submits an order."""
 import re
 import subprocess
+from background_process import run_hidden, minimized_browser_options
 import time
 
 
@@ -36,7 +37,7 @@ def apply_gift_card(adb, serial, card, read_ui, tap, center):
     def command(*args):
         # Do not expose command arguments (which may contain the card) in errors.
         try:
-            subprocess.run([adb, "-s", serial, "shell", "input", *args],
+            run_hidden([adb, "-s", serial, "shell", "input", *args],
                            check=True, capture_output=True, timeout=15)
         except (subprocess.SubprocessError, OSError):
             raise ValueError("Gift card entry was interrupted. Check the Taco Bell screen before retrying.") from None
