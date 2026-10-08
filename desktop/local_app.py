@@ -61,7 +61,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.26"
+BUILD_VERSION = "0.5.27"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -323,18 +323,16 @@ def start_taco_signin(serial: str, email: str) -> dict[str, object]:
                    check=True, capture_output=True, timeout=20)
     time.sleep(2)
     root = _taco_ui(adb, serial)
-    # Clearing storage restores these optional first-run screens.
-    for _ in range(3):
-        texts = {n.get("text", "") for n in root.iter("node")
-                 if n.get("package") == "com.tacobell.ordering"}
-        if not ({"Share your location", "Never Miss a Craving"} & texts):
+    # Wait across splash, onboarding, and home transitions instead of one snapshot.
+    for attempt in range(12):
+        texts = [n.get("text", "") for n in root.iter("node")]
+        if "Email Address" in texts and "NEXT" in texts:
             break
-        if "Skip This Step For Now" not in texts or not _taco_tap(adb, serial, text="Skip This Step For Now"):
-            raise ValueError("Could not skip Taco Bell’s optional setup screen. Retry Android sign-in.")
-        root = _taco_ui(adb, serial)
-    texts = [n.attrib.get("text", "") for n in root.iter("node")]
-    if "Email Address" not in texts:
-        _taco_tap(adb, serial, text="Sign In")
+        if {"Share your location", "Never Miss a Craving"} & set(texts):
+            _taco_tap(adb, serial, text="Skip This Step For Now")
+        elif "Sign In" in texts:
+            _taco_tap(adb, serial, text="Sign In")
+        time.sleep(1)
         root = _taco_ui(adb, serial)
     texts = [n.attrib.get("text", "") for n in root.iter("node")]
     fields = [n for n in root.iter("node") if n.attrib.get("class") == "android.widget.EditText"
@@ -358,6 +356,31 @@ def start_taco_signin(serial: str, email: str) -> dict[str, object]:
     if not _taco_tap(adb, serial, text="NEXT"):
         raise ValueError("Email entered. Tap NEXT in Taco Bell to continue sign-in.")
     return {"ok": True, "stage": "verification_required", "message": "Email submitted to Taco Bell on Android. Complete its verification or sign-in prompts on the device, then confirm the account before preparing checkout."}
+
+
+def payment_ready(root: ET.Element, method: str) -> bool:
+    nodes = [n for n in root.iter("node") if n.get("package") == "com.tacobell.ordering"]
+    texts = {n.get("text", "").strip().casefold() for n in nodes}
+    if "place order" not in texts or "select payment method" in texts:
+        return False
+    labels = ("venmo",) if method == "venmo" else ("taco bell gift card", "gift card")
+    return any(n.get("text", "").strip().casefold() in labels for n in nodes)
+
+
+def choose_taco_payment(serial: str, method: str) -> dict[str, object]:
+    if method not in {"venmo", "gift_card"}:
+        raise ValueError("Choose Venmo or Gift Card.")
+    adb = find_adb()
+    root = _taco_ui(adb, serial)
+    if not payment_ready(root, method) and method == "venmo":
+        _taco_tap(adb, serial, text="Add a Payment Method")
+        _taco_tap(adb, serial, text="Venmo")
+        root = _taco_ui(adb, serial)
+    ready = payment_ready(root, method)
+    return {"ok": True, "payment_ready": ready, "message":
+            "Selected payment is visible at final checkout." if ready else
+            ("Complete Venmo linking in Taco Bell/Venmo, return to checkout, then click Check payment and continue. Linking may be needed again after storage is cleared."
+             if method == "venmo" else "Confirm the gift card is selected at final checkout, then click Check payment and continue.")}
 
 
 def submit_taco_order(serial: str) -> dict[str, object]:
@@ -1173,6 +1196,18 @@ class Handler(SimpleHTTPRequestHandler):
                 }), encoding="utf-8")
                 self.send_json(200, {"ok": True})
                 return
+            if self.path == "/api/taco/payment":
+                serial = str(payload.get("device_serial", "")).strip()
+                if not serial or not device_status(serial).get("ok"):
+                    raise ValueError("Connect the selected Android device.")
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("Wait for the current Android step.")
+                try:
+                    result = choose_taco_payment(serial, str(payload.get("payment_method", "")))
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200, result)
+                return
             if self.path == "/api/taco/submit":
                 serial = str(payload.get("device_serial", "")).strip()
                 if payload.get("submit_confirmed") is not True or not serial:
@@ -1182,6 +1217,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
                     raise ValueError("Wait for the current Android step to finish.")
                 try:
+                    method = str(payload.get("payment_method", ""))
+                    if method not in {"venmo", "gift_card"} or not payment_ready(_taco_ui(find_adb(), serial), method):
+                        raise ValueError("The selected payment method is not confirmed at checkout. No order was submitted.")
                     result = submit_taco_order(serial)
                 finally:
                     TACO_CHECKOUT_LOCK.release()

@@ -12,7 +12,7 @@ function sequenceLock(locked) {
   resetAndroidCode();
   sequenceElement("manualTacoCheckout").hidden = locked;
   if (!locked) sequenceElement("continueTacoMain").hidden = true;
-  for (const selector of ['#detailsBlock', '#tacoBatchBuilder input', '#tacoBatchBuilder button',
+  for (const selector of ['#tacoPaymentMethod', '#detailsBlock', '#tacoBatchBuilder input', '#tacoBatchBuilder button',
       '#tacoBatchBuilder select', '#tacoCheckoutAccount', '#deviceSelect', '.brand']) {
     document.querySelectorAll(selector).forEach(element => element.disabled = locked);
   }
@@ -20,17 +20,20 @@ function sequenceLock(locked) {
 async function startTacoSequence() {
   if (tacoSequence || tacoSequenceBusy) return notify('Finish or end the current group first.');
   try {
+    const paymentMethod = sequenceElement('tacoPaymentMethod').value;
+    if (!paymentMethod) throw new Error('Choose Venmo or Gift Card before starting.');
     const details = tacoBatchText().split(/\nEND(?:\n|$)/).map(text => text.trim()).filter(Boolean);
     const people = parseLooseTacoBlocks();
     if (people.length !== details.length) throw new Error('Import one complete pasted block for each person.');
     if (!sequenceElement('deviceSelect').value) throw new Error('Choose the Android device first.');
     const cards = people.map(person => {
+      if (paymentMethod === 'venmo') return null;
       const number = (person.gift_card_number || '').replace(/[ -]/g, ''), pin = person.gift_card_pin || '';
       if (!number && !pin) return null;
       if (!/^[0-9]{1,32}$/.test(number) || !/^(?:[0-9]{3}|[0-9]{8})$/.test(pin)) throw new Error('Each supplied gift card needs a numeric number and a 3- or 8-digit PIN.');
       return {number, pin};
     });
-    tacoSequence = {people, cards, details:details.map(text => text + '\nEND'), index:0,
+    tacoSequence = {people, cards, paymentMethod, details:details.map(text => text + '\nEND'), index:0,
       serial:sequenceElement('deviceSelect').value, stage:'ready'};
     sequenceLock(true);
     await startSequencePerson();
@@ -44,6 +47,7 @@ async function startTacoSequence() {
 async function startSequencePerson() {
   if (tacoSequenceBusy || !tacoSequence) return;
   resetAndroidCode();
+  sequenceElement('checkTacoPayment').hidden = true;
   if (tacoSequence.index > 0) sequenceElement("autoPlaceOrder").checked = false;
   tacoSequenceBusy = true;
   const run = tacoSequence, person = run.people[run.index];
@@ -99,7 +103,7 @@ async function sequenceSignupComplete() {
 async function nextTacoPerson() {
   if (!tacoSequence || tacoSequenceBusy || preparingTacoOrder) return;
   if (tacoSequence.stage === 'retry') return startSequencePerson();
-  if (!['checkout','review'].includes(tacoSequence.stage)) return;
+  if (!['checkout','payment','review'].includes(tacoSequence.stage)) return;
   if (!confirm('Has this person finished? Verify their order was placed or cancelled in Taco Bell. Sign out of their account on the Taco Bell website. Continuing to another person will clear Taco Bell’s Android app data and sign out the previous person.')) return;
   if (tacoSequence.index + 1 === tacoSequence.people.length) {
     if (await endTacoSequence()) notify('Everyone in this group is finished.');
@@ -131,7 +135,9 @@ async function prepareTacoOrder() {
     if (tacoSequence && tacoSequence.stage !== 'checkout') throw new Error('Complete this person’s signup first. If checkout is already prepared, review it directly in Taco Bell.');
     if (!tacoSequence) detectTacoBatch(false);
     const plan = tacoPlan(), serial = tacoSequence ? tacoSequence.serial : sequenceElement('deviceSelect').value;
-    plan.gift_card = tacoSequence ? tacoSequence.cards[tacoSequence.index] : checkoutGiftCard();
+    plan.payment_method = tacoSequence ? tacoSequence.paymentMethod : sequenceElement('tacoPaymentMethod').value;
+    if (!plan.payment_method) throw new Error('Choose Venmo or Gift Card.');
+    plan.gift_card = plan.payment_method === 'venmo' ? null : tacoSequence ? tacoSequence.cards[tacoSequence.index] : checkoutGiftCard();
     plan.checkout_confirmed = true;
     if (!serial || !plan.location || !plan.reward) throw new Error('Choose an Android device, reward, and pickup location.');
     if (plan.item) throw new Error('Additional menu items are not supported by this helper. Clear that field first.');
@@ -142,16 +148,24 @@ async function prepareTacoOrder() {
     sequenceElement('automationPanel').style.display = 'block';
     sequenceElement('automationStatus').textContent = 'Preparing this person’s checkout…';
     const result = await api('/api/taco/prepare', {method:'POST', body:JSON.stringify({device_serial:serial, plan})});
-    if (autoSubmit) {
-      const submitted = await api('/api/taco/submit', {method:'POST',body:JSON.stringify({device_serial:serial,submit_confirmed:true})});
+    if (tacoSequence) {
+      tacoSequence.stage = 'payment';
+      tacoSequence.autoSubmit = autoSubmit;
+      sequenceElement('continueTacoMain').hidden = true;
+    }
+    const payment = await api('/api/taco/payment', {method:'POST',body:JSON.stringify({device_serial:serial,payment_method:plan.payment_method})});
+    result.message = payment.message;
+    sequenceElement('checkTacoPayment').hidden = !tacoSequence;
+    if (payment.payment_ready && autoSubmit) {
+      const submitted = await api('/api/taco/submit', {method:'POST',body:JSON.stringify({device_serial:serial,submit_confirmed:true,payment_method:plan.payment_method})});
       result.message = submitted.message;
     }
-    sequenceElement('automationStatus').textContent = result.message;
-    if (tacoSequence) {
+    if (payment.payment_ready && tacoSequence) {
       tacoSequence.stage = 'review';
-      sequenceElement('continueTacoMain').hidden = true;
-      sequenceMessage(autoSubmit ? result.message : 'Review the gift card, total, and pickup store in Taco Bell. Place or cancel the order there, then click Next person.');
+      sequenceElement('checkTacoPayment').hidden = true;
     }
+    sequenceElement('automationStatus').textContent = result.message;
+    if (tacoSequence) sequenceMessage(result.message);
     notify(result.message);
   } catch (error) { sequenceElement('automationStatus').textContent = error.message; if (tacoSequence) sequenceMessage(error.message); notify(error.message); }
   finally { preparingTacoOrder = false; sequenceElement('confirmTacoCheckout').checked = false; }
@@ -209,4 +223,24 @@ async function verifyTacoAndroid() {
   } catch (error) { sequenceElement('automationStatus').textContent = error.message; }
   finally { tacoSequenceBusy = false; sequenceElement('verifyAndroidButton').disabled = false; }
   if (verified) await continueTacoMain();
+}
+
+async function checkTacoPayment() {
+  if (!tacoSequence || tacoSequence.stage !== 'payment' || tacoSequenceBusy || preparingTacoOrder) return;
+  tacoSequenceBusy = true;
+  try {
+    const run = tacoSequence;
+    const result = await api('/api/taco/payment', {method:'POST',body:JSON.stringify({device_serial:run.serial,payment_method:run.paymentMethod})});
+    if (result.payment_ready) {
+      if (run.autoSubmit) {
+        const submitted = await api('/api/taco/submit', {method:'POST',body:JSON.stringify({device_serial:run.serial,payment_method:run.paymentMethod,submit_confirmed:true})});
+        result.message = submitted.message;
+      }
+      run.stage = 'review';
+      sequenceElement('checkTacoPayment').hidden = true;
+    }
+    sequenceMessage(result.message);
+    sequenceElement('automationStatus').textContent = result.message;
+  } catch (error) { sequenceMessage(error.message); }
+  finally { tacoSequenceBusy = false; }
 }

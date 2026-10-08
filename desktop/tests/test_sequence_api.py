@@ -73,6 +73,13 @@ class HouseholdApiTests(unittest.TestCase):
                 self.app.submit_taco_order('device')
             tap.assert_not_called()
 
+    def test_payment_listing_is_not_final_confirmation(self):
+        root=ET.fromstring('<hierarchy><node package="com.tacobell.ordering" text="Venmo"/><node package="com.tacobell.ordering" text="Select Payment Method"/></hierarchy>')
+        self.assertFalse(self.app.payment_ready(root, 'venmo'))
+        root=ET.fromstring('<hierarchy><node package="com.tacobell.ordering" text="Venmo"/><node package="com.tacobell.ordering" text="PLACE ORDER"/></hierarchy>')
+        self.assertTrue(self.app.payment_ready(root, 'venmo'))
+        self.assertFalse(self.app.payment_ready(root, 'gift_card'))
+
     def test_cancel_stops_task_and_ignores_late_completion(self):
         self.task.write_text(json.dumps({'active': True, 'details': {'email': 'first@example.com'}}))
         self.assertEqual(self.post('/api/web/cancel', {'app': 'Taco Bell'})[0], 200)
@@ -112,12 +119,12 @@ class HouseholdApiTests(unittest.TestCase):
             return ET.fromstring('<hierarchy><node text="Email Address"/><node text="NEXT"/><node class="android.widget.EditText" package="com.tacobell.ordering" resource-id="input_field" bounds="[0,0][100,50]" text="'+value+'"/></hierarchy>')
         with patch.object(self.app, 'device_status', return_value={'ok': True}), \
              patch.object(self.app, 'find_adb', return_value='adb'), \
-             patch.object(self.app, '_taco_ui', side_effect=[intro('Share your location'), intro('Never Miss a Craving'), email(''), email('test@example.com')]), \
+             patch.object(self.app, '_taco_ui', side_effect=[ET.Element('hierarchy'), intro('Share your location'), intro('Share your location'), intro('Never Miss a Craving'), email(''), email('test@example.com')]), \
              patch.object(self.app, '_taco_tap', return_value=True) as tap, \
              patch.object(self.app.subprocess, 'run'), \
              patch.object(self.app.time, 'sleep'):
             self.assertEqual(self.app.start_taco_signin('device', 'test@example.com')['stage'], 'verification_required')
-            self.assertEqual([call.kwargs['text'] for call in tap.call_args_list], ['Skip This Step For Now', 'Skip This Step For Now', 'NEXT'])
+            self.assertEqual([call.kwargs['text'] for call in tap.call_args_list], ['Skip This Step For Now', 'Skip This Step For Now', 'Skip This Step For Now', 'NEXT'])
 
     def test_android_signin_stops_on_unrecognized_form(self):
         with patch.object(self.app, 'device_status', return_value={'ok': True}), \
