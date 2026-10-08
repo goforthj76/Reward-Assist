@@ -59,7 +59,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.22"
+BUILD_VERSION = "0.5.23"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -323,6 +323,15 @@ def start_taco_signin(serial: str, email: str) -> dict[str, object]:
                    check=True, capture_output=True, timeout=20)
     time.sleep(2)
     root = _taco_ui(adb, serial)
+    # Clearing storage restores these optional first-run screens.
+    for _ in range(3):
+        texts = {n.get("text", "") for n in root.iter("node")
+                 if n.get("package") == "com.tacobell.ordering"}
+        if not ({"Share your location", "Never Miss a Craving"} & texts):
+            break
+        if "Skip This Step For Now" not in texts or not _taco_tap(adb, serial, text="Skip This Step For Now"):
+            raise ValueError("Could not skip Taco Bell’s optional setup screen. Retry Android sign-in.")
+        root = _taco_ui(adb, serial)
     texts = [n.attrib.get("text", "") for n in root.iter("node")]
     if "Email Address" not in texts:
         _taco_tap(adb, serial, text="Sign In")

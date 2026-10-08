@@ -86,6 +86,20 @@ class HouseholdApiTests(unittest.TestCase):
             tap.assert_called_once_with('adb', 'device', text='NEXT')
             self.assertTrue(any(call.args[0][-2:] == ['text', 'test@example.com'] for call in run.call_args_list))
 
+    def test_signin_skips_optional_first_run_screens_after_reset(self):
+        def intro(title):
+            return ET.fromstring('<hierarchy><node package="com.tacobell.ordering" text="'+title+'"/><node package="com.tacobell.ordering" text="Skip This Step For Now"/></hierarchy>')
+        def email(value):
+            return ET.fromstring('<hierarchy><node text="Email Address"/><node text="NEXT"/><node class="android.widget.EditText" package="com.tacobell.ordering" resource-id="input_field" bounds="[0,0][100,50]" text="'+value+'"/></hierarchy>')
+        with patch.object(self.app, 'device_status', return_value={'ok': True}), \
+             patch.object(self.app, 'find_adb', return_value='adb'), \
+             patch.object(self.app, '_taco_ui', side_effect=[intro('Share your location'), intro('Never Miss a Craving'), email(''), email('test@example.com')]), \
+             patch.object(self.app, '_taco_tap', return_value=True) as tap, \
+             patch.object(self.app.subprocess, 'run'), \
+             patch.object(self.app.time, 'sleep'):
+            self.assertEqual(self.app.start_taco_signin('device', 'test@example.com')['stage'], 'verification_required')
+            self.assertEqual([call.kwargs['text'] for call in tap.call_args_list], ['Skip This Step For Now', 'Skip This Step For Now', 'NEXT'])
+
     def test_android_signin_stops_on_unrecognized_form(self):
         with patch.object(self.app, 'device_status', return_value={'ok': True}), \
              patch.object(self.app, 'find_adb', return_value='adb'), \
