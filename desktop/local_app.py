@@ -61,7 +61,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.27"
+BUILD_VERSION = "0.5.28"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -658,9 +658,15 @@ def monitor_dutch_process(process: subprocess.Popen[object], details: dict[str, 
                           qr_temp: Path | None) -> None:
     return_code = process.wait()
     if return_code != 0:
+        try:
+            previous = json.loads(status_path.read_text(encoding="utf-8"))
+            reason = previous.get("message", "")
+        except (OSError, ValueError):
+            reason = ""
         status_path.write_text(json.dumps({
             "stage": "attention",
-            "message": f"Dutch Bros helper stopped with exit code {return_code}. Check its window for details.",
+            "message": f"Dutch Bros helper stopped with exit code {return_code}. "
+                       + (f"Last helper message: {reason}" if reason else "No diagnostic was received. Check the connected phone and retry."),
             "updatedAt": dt.datetime.now().isoformat(),
         }), encoding="utf-8")
         if qr_temp:
@@ -1030,7 +1036,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "message": (
                         "Dutch Bros resume started from the current device screen."
                         if resume_current else
-                        "Dutch Bros guided setup started. Progress will appear here and in the helper window."
+                        "Dutch Bros guided setup started. Progress will appear here."
                     ),
                 })
                 return

@@ -42,8 +42,9 @@ class StatusMirror:
         self.pending = ""
 
     def write(self, text: str) -> int:
-        written = self.stream.write(text)
-        self.stream.flush()
+        written = self.stream.write(text) if self.stream is not None else len(text)
+        if self.stream is not None:
+            self.stream.flush()
         self.pending += text
         while "\n" in self.pending:
             line, self.pending = self.pending.split("\n", 1)
@@ -56,7 +57,8 @@ class StatusMirror:
         return written
 
     def flush(self) -> None:
-        self.stream.flush()
+        if self.stream is not None:
+            self.stream.flush()
 
 
 def find_adb() -> str:
@@ -212,9 +214,30 @@ def fill_current_field(index: int, value: str, expected: int, screen_name: str) 
             time.sleep(0.5)
             continue
         fields = nodes(root, "android.widget.EditText")
+        # After app launch IME state can briefly describe the previous screen.
+        # Dismiss only when this form has an active editor, then reread bounds.
+        if any(field.attrib.get("focused") == "true" for field in fields):
+            if hide_keyboard_if_shown():
+                root = ui_root()
+                fields = nodes(root, "android.widget.EditText")
         last_count = len(fields)
         if len(fields) >= expected:
-            fill(fields[index], value)
+            click(fields[index], pause=0.7)
+            # The keyboard can resize/scroll the form after the tap. Never
+            # delete text until a fresh hierarchy confirms the intended focus.
+            focused_fields = nodes(ui_root(), "android.widget.EditText")
+            if len(focused_fields) != len(fields) or not focused_fields[index].attrib.get("focused") == "true":
+                raise SystemExit(
+                    f"Could not focus field {index + 1} on {screen_name}. "
+                    "The keyboard or layout moved; no text was cleared. Hide the keyboard and retry."
+                )
+            replace_focused_text(value)
+            time.sleep(0.25)
+            verified = nodes(ui_root(), "android.widget.EditText")
+            actual = verified[index].attrib.get("text", "") if len(verified) == len(fields) else ""
+            retained = re.sub(r"\D", "", actual) == value if value.isdigit() else actual == value
+            if len(verified) != len(fields) or not retained:
+                raise SystemExit(f"Field {index + 1} on {screen_name} did not retain the entered value. Nothing else was submitted.")
             return
         time.sleep(0.5)
     raise SystemExit(
@@ -226,6 +249,19 @@ def fill_current_field(index: int, value: str, expected: int, screen_name: str) 
 def hide_keyboard() -> None:
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
     time.sleep(0.7)
+
+
+def hide_keyboard_if_shown() -> bool:
+    """Read IME state before Back so a hidden keyboard cannot cause navigation.
+
+    Samsung/Flutter can expose clipped field bounds while the IME is open;
+    those bounds can miss the actual editable target even after refreshing.
+    """
+    state = adb("shell", "dumpsys", "input_method", capture=True)
+    if re.search(r"\bmInputShown\s*=\s*true\b", state):
+        hide_keyboard()
+        return True
+    return False
 
 
 def package_installed() -> bool:
@@ -860,3 +896,11 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError as exc:
         print(f"ADB command failed with exit code {exc.returncode}.", file=sys.stderr)
         raise SystemExit(exc.returncode)
+    except SystemExit as exc:
+        if isinstance(exc.code, str):
+            print(exc.code, file=sys.stderr, flush=True)
+        raise
+    except Exception as exc:
+        # Exception text/command arguments can contain personal field values.
+        print(f"Dutch Bros helper failed ({type(exc).__name__}). Nothing else was submitted.", file=sys.stderr, flush=True)
+        raise SystemExit(1)

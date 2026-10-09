@@ -1,5 +1,5 @@
+param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
-$Python = 'C:\Users\gofor\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
 $Project = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Venv = Join-Path $Project '.venv'
 
