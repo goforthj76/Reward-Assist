@@ -6,6 +6,11 @@ import subprocess
 import sys
 import tkinter as tk
 import threading
+import queue
+import logging
+import webbrowser
+import zipfile
+from setup_downloads import install_adb, ensure_winget
 from setup_checks import locate_adb, inspect_android
 from pathlib import Path
 from tkinter import messagebox
@@ -36,14 +41,11 @@ def find_adb() -> Path | None:
 
 
 def install_requirement(package_id: str, label: str, status: tk.StringVar, root: tk.Tk) -> None:
-    winget = shutil.which("winget")
-    if not winget:
-        raise RuntimeError(
-            f"{label} is missing and Windows Package Manager is unavailable. "
-            "Install App Installer from Microsoft Store, then run Reward Assist Setup again."
-        )
+    if package_id == "Google.PlatformTools":
+        install_adb(status.set)
+        return
+    winget = ensure_winget(status.set)
     status.set(f"Downloading and installing {label}…")
-    root.update_idletasks()
     result = subprocess.run(
         [winget, "install", "--id", package_id, "--exact", "--silent",
          "--accept-package-agreements", "--accept-source-agreements"],
@@ -88,7 +90,8 @@ def desktop_folder() -> Path:
 class SetupWindow:
     def __init__(self) -> None:
         self.root = tk.Tk()
-        self.root.title("Reward Assist Setup")
+        self.root.report_callback_exception = self.report_error
+        self.root.title("Reward Assist Setup — v0.5.29")
         width = min(720, self.root.winfo_screenwidth() - 40)
         height = min(720, self.root.winfo_screenheight() - 80)
         x = max(0, (self.root.winfo_screenwidth() - width) // 2)
@@ -117,9 +120,9 @@ class SetupWindow:
 
         card = tk.Frame(self.root, bg="white", padx=30, pady=22)
         card.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-        tk.Label(card, text="Install, then finish setup", bg="white", fg="#10213d",
+        tk.Label(card, text="Let’s get you ready", bg="white", fg="#10213d",
                  font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        tk.Label(card, text="Reward Assist includes its own runtime. Setup also checks the tools used\nfor Android connections before creating your shortcuts.",
+        tk.Label(card, text="Click Install below. We’ll download missing tools and include the Chrome helper.\nThen we’ll guide you through Chrome and your Android connection.",
                  bg="white", fg="#5f6d83", justify="left", font=("Segoe UI", 10)).pack(anchor="w", pady=(7, 18))
 
         chrome = "Found" if find_chrome() else "Missing — setup can install it"
@@ -133,9 +136,11 @@ class SetupWindow:
             tk.Label(row, text=label, bg="#f1f6fa", fg="#10213d", font=("Segoe UI", 10, "bold")).pack(side="left")
             tk.Label(row, text=value, bg="#f1f6fa", fg="#26738b", font=("Segoe UI", 9)).pack(side="right")
 
-        tk.Checkbutton(card, text="Install missing Chrome or Android ADB automatically", variable=self.install_missing,
+        tk.Checkbutton(card, text="Download and install missing Chrome / Android tools automatically", variable=self.install_missing,
                        bg="white", activebackground="white", fg="#10213d",
                        font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(17, 2))
+        tk.Button(card, text="Android tools license and download terms", relief="flat", command=lambda: webbrowser.open("https://developer.android.com/tools/releases/platform-tools")).pack(anchor="w")
+        tk.Label(card, text="Installing missing tools accepts their installation agreements. Internet required.", bg="white", fg="#5f6d83", wraplength=540).pack(anchor="w")
         tk.Checkbutton(card, text="Create a desktop shortcut", variable=self.desktop, bg="white",
                        activebackground="white", fg="#10213d", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
         tk.Checkbutton(card, text="Open Reward Assist after the setup guide", variable=self.launch, bg="white",
@@ -146,17 +151,54 @@ class SetupWindow:
                                         relief="flat", cursor="hand2", font=("Segoe UI", 11, "bold"), pady=11)
         self.install_button.pack(fill="x")
 
+    def report_error(self, kind, value, tb):
+        logging.error("Setup callback failed", exc_info=(kind, value, tb))
+        messagebox.showerror("Reward Assist Setup", str(value) + "\n\nDiagnostics: " + str(LOG_PATH))
+
     def install(self) -> None:
+        if not self.install_missing.get():
+            self.finish_install()
+            return
+        self.install_button.configure(state="disabled")
+        events = queue.Queue()
+        class Status:
+            def set(self, message):
+                events.put(("status", message))
+        def worker():
+            try:
+                if not find_adb():
+                    install_requirement("Google.PlatformTools", "Android ADB", Status(), None)
+                if not find_chrome():
+                    install_requirement("Google.Chrome", "Google Chrome", Status(), None)
+                events.put(("done", ""))
+            except Exception as exc:
+                logging.exception("Prerequisite installation failed")
+                events.put(("error", str(exc)))
+        def poll():
+            try:
+                while True:
+                    kind, message = events.get_nowait()
+                    if kind == "status":
+                        self.status.set(message)
+                    elif kind == "done":
+                        self.finish_install()
+                        return
+                    else:
+                        self.install_button.configure(state="normal")
+                        self.status.set("Installation paused. Fix the issue and retry.")
+                        messagebox.showerror("Setup needs attention", message + "\n\nDiagnostics: " + str(LOG_PATH))
+                        return
+            except queue.Empty:
+                self.root.after(100, poll)
+        threading.Thread(target=worker, daemon=True).start()
+        self.root.after(100, poll)
+
+    def finish_install(self) -> None:
         self.install_button.configure(state="disabled")
         self.status.set("Installing Reward Assist…")
         self.root.update_idletasks()
         try:
-            if self.install_missing.get():
-                if not find_chrome():
-                    install_requirement("Google.Chrome", "Google Chrome", self.status, self.root)
-                if not find_adb():
-                    install_requirement("Google.PlatformTools", "Android ADB", self.status, self.root)
-            elif not find_chrome() or not find_adb():
+            if not self.install_missing.get() and (not find_chrome() or not find_adb()):
                 proceed = messagebox.askyesno(
                     "Missing requirements",
                     "One or more optional requirements are missing. Continue installing Reward Assist anyway?",
@@ -177,9 +219,15 @@ class SetupWindow:
             extension_source = bundled("chrome_extension")
             if not extension_source.is_dir() or not (extension_source / "manifest.json").is_file():
                 raise FileNotFoundError("The packaged browser automation helper is missing.")
-            if EXTENSION_ROOT.exists():
-                shutil.rmtree(EXTENSION_ROOT)
-            shutil.copytree(extension_source, EXTENSION_ROOT)
+            shutil.copytree(extension_source, EXTENSION_ROOT, dirs_exist_ok=True)
+            for original in extension_source.rglob("*"):
+                if original.is_file() and original.read_bytes() != (EXTENSION_ROOT / original.relative_to(extension_source)).read_bytes():
+                    raise RuntimeError("Extension files could not be verified after installation.")
+            with zipfile.ZipFile(INSTALL_ROOT / "Reward-Assist-Chrome-Extension.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+                for file in EXTENSION_ROOT.rglob("*"):
+                    if file.is_file():
+                        archive.write(file, "browser-helper/" + file.relative_to(EXTENSION_ROOT).as_posix())
+            make_shortcut(INSTALL_ROOT / "Chrome Extension Folder.lnk", EXTENSION_ROOT)
             start_menu = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs/Reward Assist.lnk"
             make_shortcut(start_menu, APP_EXE)
             if self.desktop.get():
@@ -194,6 +242,7 @@ class SetupWindow:
                 encoding="utf-8")
             self.show_setup_guide()
         except Exception as exc:
+            logging.exception("Application installation failed")
             self.install_button.configure(state="normal")
             self.status.set("Installation could not finish")
             messagebox.showerror("Reward Assist Setup", str(exc))
@@ -218,9 +267,17 @@ class SetupWindow:
             return
         subprocess.Popen([str(chrome), "chrome://extensions/"])
 
+    def open_extension_folder(self):
+        if not (EXTENSION_ROOT / "manifest.json").is_file():
+            raise RuntimeError("The installed extension folder is missing. Rerun setup; check security history if files disappeared.")
+        os.startfile(EXTENSION_ROOT)
+
     def copy_extension_path(self):
         self.root.clipboard_clear()
         self.root.clipboard_append(str(EXTENSION_ROOT))
+        self.root.update_idletasks()
+        if self.root.clipboard_get() != str(EXTENSION_ROOT):
+            raise RuntimeError("Clipboard copy failed. Select and copy the folder path shown below instead.")
         self.guide_status.set("Folder path copied. Paste it into Chrome’s Load unpacked folder picker.")
 
     def check_android(self):
@@ -252,7 +309,12 @@ class SetupWindow:
             self.guide_text("1. Enable the included Chrome extension", True)
             self.guide_text("Needed for website signup. The extension files are installed, but Chrome requires you to enable them once.")
             self.guide_text("Open Extensions → turn on Developer mode → Load unpacked → select the folder below. If Rewards Assistant Helper is already listed, click Reload and make sure it is enabled.")
-            self.guide_text(str(EXTENSION_ROOT))
+            path_field = tk.Entry(self.guide_frame, readonlybackground="#f1f6fa", width=72)
+            path_value = tk.StringVar(value=str(EXTENSION_ROOT))
+            path_field.configure(textvariable=path_value, state="readonly")
+            path_field.path_value = path_value
+            path_field.pack(fill="x", pady=8)
+            tk.Button(self.guide_frame, text="Open installed extension folder", command=self.open_extension_folder).pack(anchor="w", pady=4)
             tk.Button(self.guide_frame, text="Open Chrome Extensions", command=self.open_extensions).pack(anchor="w", pady=4)
             tk.Button(self.guide_frame, text="Copy extension folder path", command=self.copy_extension_path).pack(anchor="w", pady=4)
             self.guide_text("Chrome: " + ("installed" if find_chrome() else "missing") + "   •   ADB: " + ("installed" if find_adb() else "missing"))
@@ -282,5 +344,14 @@ class SetupWindow:
         self.root.mainloop()
 
 
+LOG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "RewardAssist-Setup" / "setup.log"
+
 if __name__ == "__main__":
-    SetupWindow().run()
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+        logging.info("Setup started; installation target: %s", INSTALL_ROOT)
+        SetupWindow().run()
+    except Exception:
+        logging.exception("Setup startup failed")
+        messagebox.showerror("Reward Assist Setup", "Setup could not start. See diagnostics at " + str(LOG_PATH))

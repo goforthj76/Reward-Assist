@@ -29,3 +29,32 @@ class SetupTests(unittest.TestCase):
                 self.assertGreater(len(app.guide_frame.winfo_children()),3)
         finally:
             app.root.destroy()
+
+    def test_install_copies_extension_and_provides_zip(self):
+        import tempfile
+        import zipfile
+        from contextlib import ExitStack
+        with tempfile.TemporaryDirectory() as folder, ExitStack() as stack:
+            base=Path(folder)
+            source=base/'payload';source.mkdir()
+            (source/'Rewards Assistant.exe').write_bytes(b'test exe')
+            helper=source/'chrome_extension';helper.mkdir()
+            (helper/'manifest.json').write_text('{"manifest_version":3}')
+            (helper/'background.js').write_text('// test')
+            target=base/'install'
+            for name,value in [('INSTALL_ROOT',target),('APP_EXE',target/'Reward Assist.exe'),('EXTENSION_ROOT',target/'browser-helper')]:
+                stack.enter_context(patch.object(setup_app,name,value))
+            stack.enter_context(patch.object(setup_app,'bundled',side_effect=lambda name:source/name))
+            stack.enter_context(patch.object(setup_app,'find_adb',return_value=Path('adb')))
+            stack.enter_context(patch.object(setup_app,'find_chrome',return_value=Path('chrome')))
+            stack.enter_context(patch.object(setup_app,'make_shortcut'))
+            error=stack.enter_context(patch.object(setup_app.messagebox,'showerror'))
+            app=setup_app.SetupWindow();app.root.withdraw();app.desktop.set(False)
+            try:
+                app.finish_install()
+                error.assert_not_called()
+                self.assertEqual((target/'browser-helper/background.js').read_text(),'// test')
+                with zipfile.ZipFile(target/'Reward-Assist-Chrome-Extension.zip') as bundle:
+                    self.assertIn('browser-helper/manifest.json',bundle.namelist())
+                self.assertEqual(app.guide_step,0)
+            finally: app.root.destroy()
