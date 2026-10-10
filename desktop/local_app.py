@@ -61,7 +61,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.31"
+BUILD_VERSION = "0.5.32"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -1125,7 +1125,7 @@ class Handler(SimpleHTTPRequestHandler):
                         with BUNDT_LOCK:
                             BUNDT_SESSION.clear()
                         raise ValueError("Chrome could not open. Try again.") from None
-                    self.send_json(200, {"ok": True, "message": "Opening Nothing Bundt Cakes for a signup review. No account is submitted automatically."})
+                    self.send_json(200, {"ok": True, "message": "Opening Nothing Bundt Cakes. The helper will fill the form and click Create Account once."})
                     return
                 if app not in {"Taco Bell", "Wendy's"}:
                     raise ValueError("Choose Taco Bell or Wendy's.")
@@ -1323,13 +1323,33 @@ class Handler(SimpleHTTPRequestHandler):
                         task = BUNDT_SESSION.get("task", {})
                         if payload.get("session_id") == task.get("session_id") and task.get("active"):
                             stage = str(payload.get("stage", "attention"))
+                            if stage == "claim_submit":
+                                if task.get("submitted"):
+                                    self.send_json(200, {"ok": True, "claimed": False})
+                                    return
+                                task["submitted"] = True
+                                task["profile"] = {k: v for k, v in task.get("details", {}).items() if k != "password"}
+                                task.pop("details", None)
+                                BUNDT_SESSION["status"] = {"stage": "submitted", "message": "Create Account is being clicked once. Waiting for the registration confirmation; automatic retry is disabled."}
+                                self.send_json(200, {"ok": True, "claimed": True})
+                                return
                             messages = {
-                                "ready_for_review": "Form filled and Bundtastic Rewards selected. Review and submit in Chrome. SMS marketing was left unchanged. This test does not confirm account creation.",
+                                "complete": "Nothing Bundt Cakes confirmed registration. Profile saved locally.",
                                 "filling_details": "Filling Nothing Bundt Cakes details and waiting for bakery choices.",
-                                "attention": "Could not verify every field. Check country, state, bakery spelling and the form in Chrome. Nothing was submitted."
+                                "attention": "Signup could not be confirmed. Check validation or verification in Chrome. Create Account will not be clicked again automatically."
                             }
+                            if stage == "complete" and not task.get("submitted"):
+                                self.send_json(200, {"ok": True, "ignored": True})
+                                return
                             BUNDT_SESSION["status"] = {"stage": stage if stage in messages else "attention", "message": messages.get(stage, messages["attention"])}
-                            if stage in {"ready_for_review", "attention"}:
+                            if stage == "complete":
+                                profile = dict(task.get("profile", {}))
+                                profile.update(id=uuid.uuid4().hex, app=app, label=profile.get("first_name", "Profile"), saved_at=dt.datetime.now().isoformat(timespec="seconds"))
+                                profiles = load_profiles()
+                                if not any(p.get("app") == app and p.get("email", "").casefold() == profile.get("email", "").casefold() for p in profiles):
+                                    profiles.append(profile)
+                                    save_profiles(profiles)
+                            if stage in {"complete", "attention"}:
                                 BUNDT_SESSION.pop("task", None)
                     self.send_json(200, {"ok": True})
                     return

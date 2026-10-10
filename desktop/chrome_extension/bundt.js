@@ -30,10 +30,18 @@
     busy = true;
     try {
       const task = await ask({type:'task',app});
-      if (!task?.active || !task.details) return;
+      if (!task?.active) return;
       if (session !== task.session_id) {session = task.session_id; attempts = 0; done = false;}
       if (done) return;
       const report = stage => ask({type:'status',payload:{app,session_id:session,stage}});
+      if (task.submitted) {
+        const registered = /Thank you for registering with Nothing Bundt Cakes\./i.test(document.body.innerText);
+        if (location.pathname === '/customer/account/' && registered) {
+          done = true; await report('complete');
+        } else if (++attempts >= 60) {done = true; await report('attention');}
+        return;
+      }
+      if (!task.details || !location.pathname.startsWith('/customer/account/create')) return;
       const d = task.details, date = d.birthday.split('-');
       // These IDs were inspected on the official signup page. Never infer checkbox order.
       let ok = true;
@@ -49,10 +57,17 @@
       if (ok && visible(rewards) && !rewards.checked) rewards.click();
       ok = ok && !!rewards?.checked;
       attempts++;
-      if (ok) {done = true; await report('ready_for_review');}
+      if (ok) {
+        const submit = field('create-account');
+        if (visible(submit) && !submit.disabled && submit.form?.checkValidity()) {
+          // Claim once on the desktop before clicking. Reloads and multiple tabs cannot resubmit.
+          const claimed = await report('claim_submit');
+          if (claimed?.claimed) {submit.click(); attempts = 0;}
+        } else if (attempts >= 30) {done = true; await report('attention');}
+      }
       else if (attempts >= 30) {done = true; await report('attention');}
       else await report('filling_details');
-      // No submit click, CAPTCHA handling or success inference in this test integration.
+      // Verification challenges remain on the official page; never automatically retry submission.
     } finally {busy = false;}
   }
   setInterval(() => run().catch(() => {}), 1000);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rewards Assistant Helper",
-  "version": "0.5.31",
+  "version": "0.5.32",
   "description": "Locally assists with restaurant rewards signup.",
   "permissions": [
     "storage",
@@ -39,7 +39,7 @@
     },
     {
       "matches": [
-        "https://www.nothingbundtcakes.com/customer/account/create/*"
+        "https://www.nothingbundtcakes.com/customer/account/*"
       ],
       "js": [
         "bundt.js"
