@@ -21,7 +21,9 @@
   if(textMe||/Enter the mobile phone number you want to use/.test(body)){
     const fields=[...document.querySelectorAll('input')].filter(e=>visible(e)&&!e.disabled&&['text','tel','number'].includes(e.type));
     if(fields.length!==1)return;
-    if(fill(fields[0],d.phone)){const btn=button('TEXT ME');if(btn&&(await report('claim_phone'))?.claimed)btn.click()}
+    const phone=fields[0], digits=value=>String(value||'').replace(/\D/g,'');
+    if(digits(phone.value)!==digits(d.phone))fill(phone,d.phone);
+    if(digits(phone.value)===digits(d.phone)){const btn=button('TEXT ME');if(btn&&(await report('claim_phone'))?.claimed)btn.click()}
     return;
   }
   if(/Enter Your Code/.test(body)){

@@ -91,7 +91,7 @@ class SetupWindow:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.report_callback_exception = self.report_error
-        self.root.title("Reward Assist Setup — v0.5.33")
+        self.root.title("Reward Assist Setup — v0.5.34")
         width = min(720, self.root.winfo_screenwidth() - 40)
         height = min(720, self.root.winfo_screenheight() - 80)
         x = max(0, (self.root.winfo_screenwidth() - width) // 2)

@@ -63,7 +63,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.33"
+BUILD_VERSION = "0.5.34"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -1518,7 +1518,7 @@ class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
 def main() -> None:
     global PORT
     server = None
-    for candidate_port in range(PORT, PORT + 10):
+    for candidate_port in [PORT]:
         PORT = candidate_port
         try:
             server = ExclusiveThreadingHTTPServer((HOST, PORT), Handler)
@@ -1526,7 +1526,17 @@ def main() -> None:
         except OSError as exc:
             if getattr(exc, "winerror", None) != 10048:
                 raise
-            continue
+            # The extension uses this fixed port. Reuse the existing app rather
+            # than silently opening a disconnected session on another port.
+            try:
+                with urlopen(f"http://{HOST}:{PORT}/api/status", timeout=3) as response:
+                    running = json.load(response)
+                if running.get("local") is True and running.get("version"):
+                    open_local_ui()
+                    return
+            except (OSError, ValueError):
+                pass
+            raise OSError("Reward Assist's connection is occupied. Close the existing app and try again.") from exc
     if server is None:
         raise OSError("Reward Assist could not find an available local port. Close old Reward Assist windows and retry.")
     threading.Timer(0.5, open_local_ui).start()
