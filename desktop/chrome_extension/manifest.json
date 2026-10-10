@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rewards Assistant Helper",
-  "version": "0.5.32",
+  "version": "0.5.33",
   "description": "Locally assists with restaurant rewards signup.",
   "permissions": [
     "storage",
@@ -12,7 +12,8 @@
     "http://127.0.0.1:8768/*",
     "https://www.tacobell.com/*",
     "https://order.wendys.com/*",
-    "https://www.nothingbundtcakes.com/*"
+    "https://www.nothingbundtcakes.com/*",
+    "https://www.thecheesecakefactory.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -43,6 +44,15 @@
       ],
       "js": [
         "bundt.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.thecheesecakefactory.com/account/signup*"
+      ],
+      "js": [
+        "cheesecake.js"
       ],
       "run_at": "document_idle"
     }

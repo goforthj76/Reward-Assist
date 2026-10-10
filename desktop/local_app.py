@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from cheesecake_session import CheesecakeSession
+CHEESECAKE = CheesecakeSession()
 from android_verification import verify_android_code
 from setup_checks import locate_adb
 
@@ -61,7 +63,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.32"
+BUILD_VERSION = "0.5.33"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -818,6 +820,14 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed_url = urlparse(self.path)
         query = parse_qs(parsed_url.query)
+        if query.get("app", [""])[0] == "The Cheesecake Factory":
+            if parsed_url.path == "/api/extension/task":
+                self.send_json(200, CHEESECAKE.task())
+                return
+            if parsed_url.path == "/api/web/status":
+                CHEESECAKE.task()
+                self.send_json(200, dict(CHEESECAKE.status))
+                return
         if self.path == "/api/status":
             profiles = load_profiles()
             self.send_json(200, {
@@ -916,6 +926,31 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             payload = self.read_json()
+            if payload.get("app") == "The Cheesecake Factory":
+                if self.path == "/api/web/start":
+                    queue = parse_detail_blocks(str(payload.get("details", "")), WEB_REQUIRED + ("phone", "password", "restaurant"))
+                    if len(queue) != 1: raise ValueError("Use one Cheesecake Factory account at a time.")
+                    browser = find_chrome()
+                    if browser is None: raise ValueError("Install Chrome and enable the updated helper first.")
+                    CHEESECAKE.start({key:queue[0][key] for key in WEB_REQUIRED + ("phone", "password", "restaurant")})
+                    try:
+                        subprocess.Popen([str(browser), "--new-window", "https://www.thecheesecakefactory.com/account/signup"], **minimized_browser_options())
+                    except OSError:
+                        CHEESECAKE.stop()
+                        raise ValueError("Chrome could not open.") from None
+                    self.send_json(200, {"ok":True,"message":CHEESECAKE.status["message"]})
+                    return
+                if self.path == "/api/extension/status":
+                    self.send_json(200, CHEESECAKE.update(str(payload.get("stage", "")), payload.get("session_id")))
+                    return
+                if self.path == "/api/web/code":
+                    CHEESECAKE.code(str(payload.get("code", "")).strip())
+                    self.send_json(200, {"ok":True,"message":"Code sent to Chrome."})
+                    return
+                if self.path == "/api/web/approve":
+                    CHEESECAKE.approve()
+                    self.send_json(200, {"ok":True,"message":"Signup approved. The helper will click Sign Up once."})
+                    return
             if self.path == "/api/profile/custom":
                 label = str(payload.get("label", "")).strip()
                 app = str(payload.get("app", "Custom account")).strip()

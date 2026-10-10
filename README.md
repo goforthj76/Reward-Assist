@@ -17,9 +17,9 @@ Local profiles and QR snapshots are intentionally excluded from Git. Optional Ta
 
 Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories, virtual environments, browser downloads, and user data remain untracked.
 
-## Windows v0.5.32
+## Windows v0.5.33
 
-[Download installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.32/Reward-Assist-Setup.exe) · [Download portable app](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.32/Reward-Assist-Windows.exe)
+[Download installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.33/Reward-Assist-Setup.exe) · [Download portable app](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.33/Reward-Assist-Windows.exe)
 
 Close all older Reward Assist windows before installing. This release corrects the version label and disables caching of the local app UI.
 
@@ -42,3 +42,7 @@ END
 ```
 
 Use the exact country, state and bakery names from the official website. Password is held temporarily in memory for this flow, not written to its session files.
+
+### Cheesecake Factory website beta
+
+Use one details block with first_name, last_name, email, phone, zip_code, birthday (YYYY-MM-DD), password, and restaurant. Example restaurant: `The Shops at Highland Village (Highland Village, TX)`. MAIN requests one SMS code; enter it in Assistant status. The helper fills the profile and selects the exact restaurant. Review the official terms and promotional email/SMS consent before approving creation. Sign Up is clicked once; a 400 error stops for attention. Account completion is not automatically confirmed or saved yet. Password and SMS code remain in a short-lived memory session, not session files. Reload the updated Chrome extension after installation.
