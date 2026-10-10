@@ -61,12 +61,14 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.30"
+BUILD_VERSION = "0.5.31"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
 RELAYS: dict[str, dict[str, object]] = {}
 RELAYS_LOCK = threading.Lock()
+BUNDT_SESSION = {}
+BUNDT_LOCK = threading.Lock()
 TACO_CHECKOUT_LOCK = threading.Lock()
 ALL_FIELDS = ("first_name", "last_name", "phone", "email", "zip_code", "birthday")
 DUTCH_REQUIRED = ALL_FIELDS
@@ -858,6 +860,11 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed_url.path == "/api/web/status":
             app = parse_qs(parsed_url.query).get("app", [""])[0]
+            if app == "Nothing Bundt Cakes":
+                with BUNDT_LOCK:
+                    status = dict(BUNDT_SESSION.get("status", {"stage": "idle", "message": "Start Nothing Bundt Cakes setup first."}))
+                self.send_json(200, status)
+                return
             slug = re.sub(r"[^A-Za-z]+", "-", app).strip("-").lower()
             status_path = WEB_SESSION_ROOT / slug / "status.json"
             if app in {"Taco Bell", "Wendy's"}:
@@ -870,6 +877,13 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed_url.path == "/api/extension/task":
             app = parse_qs(parsed_url.query).get("app", [""])[0]
             slug = re.sub(r"[^A-Za-z]+", "-", app).strip("-").lower()
+            if app == "Nothing Bundt Cakes":
+                with BUNDT_LOCK:
+                    task = dict(BUNDT_SESSION.get("task", {"active": False})) if time.monotonic() < BUNDT_SESSION.get("expires", 0) else {"active": False}
+                    if not task.get("active"):
+                        BUNDT_SESSION.pop("task", None)
+                self.send_json(200, task)
+                return
             task_path = WEB_SESSION_ROOT / slug / "task.json"
             if not task_path.exists():
                 self.send_json(200, {"active": False})
@@ -1091,6 +1105,28 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if self.path == "/api/web/start":
                 app = str(payload.get("app", ""))
+                if app == "Nothing Bundt Cakes":
+                    queue = parse_detail_blocks(str(payload.get("details", "")), WEB_REQUIRED + ("phone", "password", "country", "state", "bakery"))
+                    if len(queue) != 1:
+                        raise ValueError("Test one Nothing Bundt Cakes account at a time.")
+                    details = {key: queue[0][key] for key in WEB_REQUIRED + ("phone", "password", "country", "state", "bakery")}
+                    if details["country"] not in {"United States", "Canada"}:
+                        raise ValueError("Use country: United States or country: Canada.")
+                    browser = find_chrome()
+                    if browser is None:
+                        raise ValueError("Install Google Chrome and enable Rewards Assistant Helper first.")
+                    with BUNDT_LOCK:
+                        BUNDT_SESSION.clear()
+                        BUNDT_SESSION.update(task={"active": True, "details": details, "session_id": uuid.uuid4().hex}, expires=time.monotonic()+900,
+                            status={"stage": "waiting_extension", "message": "Opening Nothing Bundt Cakes. Enable or reload Rewards Assistant Helper if the form does not fill."})
+                    try:
+                        subprocess.Popen([str(browser), "--new-window", "https://www.nothingbundtcakes.com/customer/account/create/"], **minimized_browser_options())
+                    except OSError:
+                        with BUNDT_LOCK:
+                            BUNDT_SESSION.clear()
+                        raise ValueError("Chrome could not open. Try again.") from None
+                    self.send_json(200, {"ok": True, "message": "Opening Nothing Bundt Cakes for a signup review. No account is submitted automatically."})
+                    return
                 if app not in {"Taco Bell", "Wendy's"}:
                     raise ValueError("Choose Taco Bell or Wendy's.")
                 queue = parse_detail_blocks(str(payload.get("details", "")), WEB_REQUIRED)
@@ -1282,6 +1318,21 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if self.path == "/api/extension/status":
                 app = str(payload.get("app", ""))
+                if app == "Nothing Bundt Cakes":
+                    with BUNDT_LOCK:
+                        task = BUNDT_SESSION.get("task", {})
+                        if payload.get("session_id") == task.get("session_id") and task.get("active"):
+                            stage = str(payload.get("stage", "attention"))
+                            messages = {
+                                "ready_for_review": "Form filled and Bundtastic Rewards selected. Review and submit in Chrome. SMS marketing was left unchanged. This test does not confirm account creation.",
+                                "filling_details": "Filling Nothing Bundt Cakes details and waiting for bakery choices.",
+                                "attention": "Could not verify every field. Check country, state, bakery spelling and the form in Chrome. Nothing was submitted."
+                            }
+                            BUNDT_SESSION["status"] = {"stage": stage if stage in messages else "attention", "message": messages.get(stage, messages["attention"])}
+                            if stage in {"ready_for_review", "attention"}:
+                                BUNDT_SESSION.pop("task", None)
+                    self.send_json(200, {"ok": True})
+                    return
                 if app not in {"Taco Bell", "Wendy's"}:
                     raise ValueError("Invalid extension status source.")
                 slug = re.sub(r"[^A-Za-z]+", "-", app).strip("-").lower()
