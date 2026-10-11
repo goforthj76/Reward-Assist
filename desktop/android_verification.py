@@ -13,7 +13,8 @@ def verify_android_code(adb, serial, code, read_ui, tap, center, target):
     nodes = [n for n in root.iter("node") if n.get("package") == package]
     texts = {n.get("text", "") for n in nodes}
     fields = [n for n in nodes if n.get("class") == "android.widget.EditText"]
-    if not {"Verify Your Email", "Code", "VERIFY"}.issubset(texts) or len(fields) != 1 or fields[0].get("resource-id") != "input_field":
+    normalized = {text.strip().casefold() for text in texts}
+    if not {"verify your email", "code", "verify"}.issubset(normalized) or len(fields) != 1 or fields[0].get("resource-id", "").split("/")[-1] != "input_field":
         raise ValueError("Android is not on Taco Bell’s email-code screen. No code was entered.")
     def entry(*args):
         try:
@@ -27,7 +28,7 @@ def verify_android_code(adb, serial, code, read_ui, tap, center, target):
     entry("keyevent", *(["KEYCODE_DEL"] * 32))
     entry("text", code)
     root = read_ui(adb, serial)
-    if not any(n.get("package") == package and n.get("resource-id") == "input_field"
+    if not any(n.get("package") == package and n.get("resource-id", "").split("/")[-1] == "input_field"
                and n.get("text") == code for n in root.iter("node")):
         raise ValueError("Could not confirm code entry. VERIFY was not pressed.")
     entry("keyevent", "KEYCODE_BACK")

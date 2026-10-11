@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.5.8";
+  const SCRIPT_VERSION = "0.5.35";
   if (window.__rewardsAssistantRunning === SCRIPT_VERSION) return;
   window.__rewardsAssistantRunning = SCRIPT_VERSION;
 
@@ -180,10 +180,18 @@
       }
       if (codeUsed !== task.verification_code) {
         setField(codeField, task.verification_code);
-        codeUsed = task.verification_code;
+        if (codeField.value.replace(/\s/g, "") !== task.verification_code.replace(/\s/g, "")) {
+          await report("attention", "Could not confirm code entry. Check the code field in Chrome.");
+          return;
+        }
         const verify = button(/^(confirm|next|continue|verify|submit)$/i);
-        if (verify) verify.click();
-        await report("filling_details", "Verification code entered. Filling the remaining details.");
+        if (!verify || verify.disabled || verify.getAttribute("aria-disabled") === "true") {
+          await report("waiting_code", "Code entered. Waiting for the website verification button to become available.");
+          return;
+        }
+        codeUsed = task.verification_code;
+        verify.click();
+        await report("filling_details", "Verification submitted. Waiting for the website to continue.");
       }
       return;
     }

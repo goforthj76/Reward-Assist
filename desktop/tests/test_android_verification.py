@@ -44,3 +44,12 @@ class VerificationTests(unittest.TestCase):
         root=ET.fromstring("<hierarchy><node package='com.tacobell.ordering' text='Home'/><node package='com.tacobell.ordering' text='Rewards'/><node package='com.tacobell.ordering' text='START YOUR ORDER'/><node package='com.tacobell.ordering' text='Sign In'/></hierarchy>")
         self.assertEqual(self.call_verify([screen(),screen('001234')]+[root]*6)['stage'],'verification_unconfirmed')
 
+
+    def test_package_qualified_field_id(self):
+        before=screen();after=screen('001234')
+        for root in (before,after):
+            for node in root.iter('node'):
+                if node.get('resource-id'):
+                    node.set('resource-id','com.tacobell.ordering:id/input_field')
+        signed=ET.fromstring('<hierarchy><node package="com.tacobell.ordering" text="Free Welcome Reward"/></hierarchy>')
+        self.assertEqual(self.call_verify([before,after,signed])['stage'],'signed_in')
