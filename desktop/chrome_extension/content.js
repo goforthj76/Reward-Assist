@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = "0.5.35";
+  const SCRIPT_VERSION = "0.5.36";
   if (window.__rewardsAssistantRunning === SCRIPT_VERSION) return;
   window.__rewardsAssistantRunning = SCRIPT_VERSION;
 
