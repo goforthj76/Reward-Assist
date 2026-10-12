@@ -1,0 +1,27 @@
+name: Build iPhone preview
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Build unsigned device app
+        working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild -project RewardAssist.xcodeproj -scheme RewardAssist -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+          mkdir -p build/package/Payload
+          cp -R build/Build/Products/Release-iphoneos/RewardAssist.app build/package/Payload/
+          cd build/package
+          zip -qr ../Reward-Assist-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Reward-Assist-iPhone-preview
+          path: ios/build/Reward-Assist-unsigned.ipa
+          if-no-files-found: error
