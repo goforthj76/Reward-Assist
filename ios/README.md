@@ -1,6 +1,6 @@
 # Native iPhone plan and build status
 
-The first source preview is SwiftUI, not a web-page wrapper. It includes native Home, Wallet, Activity and Computer tabs and user-requested local reminders. Wallet sync and computer pairing are explicitly unavailable in this preview. No IPA has been compiled or device-tested yet.
+The source preview is SwiftUI, not a web-page wrapper. It now includes an encrypted local account/QR wallet, password reveal with device authentication, app lock, favorites pinned on Home, search, a birthday calendar, expiration dates, local expiration reminders, full-screen QR images and undoable used markers. Activity and Computer remain clearly unavailable placeholders. Cloud wallet sync and computer pairing are not connected. No IPA has been compiled or device-tested yet.
 
 ## Build
 The manual GitHub Actions workflow in `.github/workflows/ios-preview.yml` uses a hosted Mac, Xcode and XcodeGen to produce `Reward-Assist-unsigned.ipa`. SideStore must sign it during installation. A Windows machine alone cannot run Xcode. GitHub authorization needs permission to add workflows before this build configuration can be pushed. Run the manual workflow and download its artifact, then extract the IPA.

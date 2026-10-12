@@ -4,13 +4,13 @@ import UserNotifications
 @main
 struct RewardAssistApp: App {
     @StateObject private var wallet = WalletStore()
-    var body: some Scene { WindowGroup { RootView().environmentObject(wallet) } }
+    var body: some Scene { WindowGroup { PrivacyGate { RootView() }.environmentObject(wallet) } }
 }
 
 struct RootView: View {
     var body: some View {
         TabView {
-            NavigationStack { HomeView() }.tabItem { Label("Home", systemImage: "house.fill") }
+            NavigationStack { DashboardView() }.tabItem { Label("Home", systemImage: "house.fill") }
             NavigationStack { NativeWalletView() }.tabItem { Label("Wallet", systemImage: "wallet.pass.fill") }
             NavigationStack {
                 ContentUnavailableView("No activity yet", systemImage: "clock.arrow.circlepath", description: Text("Computer requests will appear here once secure pairing is available."))

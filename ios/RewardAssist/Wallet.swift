@@ -3,6 +3,7 @@ import PhotosUI
 import CryptoKit
 import Security
 import LocalAuthentication
+import UserNotifications
 
 struct RewardCard: Codable, Identifiable {
     var id = UUID()
@@ -14,6 +15,8 @@ struct RewardCard: Codable, Identifiable {
     var qr: Data?
     var favorite = false
     var usedAt: Date?
+    var expiresAt: Date?
+    var birthday: Date?
 }
 
 @MainActor final class WalletStore: ObservableObject {
@@ -52,6 +55,8 @@ struct RewardCard: Codable, Identifiable {
             guard let data = sealed.combined else { throw CocoaError(.fileWriteUnknown) }
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to:file, options:[.atomic, .completeFileProtection])
+            let removed = Set(cards.map(\.id)).subtracting(updated.map(\.id))
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: removed.map { "expiry-\($0)" })
             cards = updated
             return true
         } catch { self.error = "Your change could not be saved. Please try again."; return false }
@@ -116,6 +121,8 @@ struct AddCardView: View {
     @State private var qr: Data?
     @State private var error=""
     @State private var importing=false
+    @State private var hasExpiry=false, hasBirthday=false
+    @State private var expiry=Date().addingTimeInterval(86400*7), birthday=Date()
     var body: some View {
         Form {
             Section("Account") {
@@ -130,13 +137,19 @@ struct AddCardView: View {
                 if let qr, let image=UIImage(data:qr) { Image(uiImage:image).resizable().scaledToFit().frame(maxHeight:180) }
                 Text("Import the original code supplied by the restaurant. Codes may expire or change; confirm it is current before use.").font(.footnote)
             }
+            Section("Dates") {
+                Toggle("Reward expires",isOn:$hasExpiry)
+                if hasExpiry { DatePicker("Expiration",selection:$expiry,displayedComponents:.date) }
+                Toggle("Show birthday in calendar",isOn:$hasBirthday)
+                if hasBirthday { DatePicker("Birthday",selection:$birthday,in:...Date(),displayedComponents:.date) }
+            }
             Section("Notes") { TextField("Offer details, pickup preference…",text:$notes,axis:.vertical).lineLimit(3...6) }
             if !error.isEmpty { Text(error).foregroundStyle(.red) }
         }.navigationTitle("New account")
             .toolbar {
                 ToolbarItem(placement:.cancellationAction) { Button("Cancel"){dismiss()} }
                 ToolbarItem(placement:.confirmationAction) { Button("Save") {
-                    if wallet.save(wallet.cards + [RewardCard(name:name.trimmingCharacters(in:.whitespacesAndNewlines),email:email,memberID:memberID,notes:notes,password:password.isEmpty ? nil : password,qr:qr)]) { dismiss() }
+                    if wallet.save(wallet.cards + [RewardCard(name:name.trimmingCharacters(in:.whitespacesAndNewlines),email:email,memberID:memberID,notes:notes,password:password.isEmpty ? nil : password,qr:qr,expiresAt:hasExpiry ? expiry : nil,birthday:hasBirthday ? birthday : nil)]) { dismiss() }
                     else { error=wallet.error ?? "Could not save account." }
                 }.disabled(name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || importing) }
             }
@@ -167,6 +180,8 @@ struct CardDetail: View {
                     }
                 }
                 Section("Account details") {
+                    if let date=card.expiresAt {LabeledContent("Expires",value:date.formatted(date:.abbreviated,time:.omitted))}
+                    if let date=card.birthday {LabeledContent("Birthday",value:date.formatted(.dateTime.month().day()))}
                     if !card.email.isEmpty { LabeledContent("Email",value:card.email).textSelection(.enabled) }
                     if !card.memberID.isEmpty { LabeledContent("Membership",value:card.memberID).textSelection(.enabled) }
                     if !card.notes.isEmpty {Text(card.notes).textSelection(.enabled)}
