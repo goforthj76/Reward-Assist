@@ -28,3 +28,17 @@ Sources:
 - https://docs.sidestore.io/docs/faq
 - https://developer.apple.com/documentation/usernotifications/pushing-background-updates-to-your-app
 - https://support.apple.com/en-au/guide/security/sec15bfe098e/web
+
+
+## Preview 0.2.0 sync
+Computer tab signs into the existing cloud vault and merges new accounts only.
+It uses the desktop PBKDF2 SHA-256 / 100,000 iterations and AES-GCM envelope,
+with optimistic version checks. Existing entries, unknown cloud fields, and
+local dates are preserved. The wallet binds to the first successfully unlocked
+cloud account to prevent accidental cross-account uploads. Passwords and bearer
+tokens are not persisted by the sync client.
+
+Not yet supported: edit/deletion propagation, desktop-local import of phone
+accounts, background sync, remote task execution, remote push notifications.
+New phone accounts are uploaded to the cloud web wallet. This update requires
+a Mac build and live two-device verification before release.

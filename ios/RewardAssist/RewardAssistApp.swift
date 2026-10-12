@@ -16,7 +16,7 @@ struct RootView: View {
                 ContentUnavailableView("No activity yet", systemImage: "clock.arrow.circlepath", description: Text("Computer requests will appear here once secure pairing is available."))
                     .navigationTitle("Activity")
             }.tabItem { Label("Activity", systemImage: "clock") }
-            NavigationStack { ComputerView() }.tabItem { Label("Computer", systemImage: "desktopcomputer") }
+            NavigationStack { ComputerSyncView() }.tabItem { Label("Computer", systemImage: "desktopcomputer") }
         }.tint(.teal)
     }
 }

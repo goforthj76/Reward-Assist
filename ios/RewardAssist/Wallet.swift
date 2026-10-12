@@ -90,7 +90,7 @@ struct NativeWalletView: View {
                 ForEach(visible) { card in
                     NavigationLink { CardDetail(id:card.id) } label: { CardTile(card:card) }.buttonStyle(.plain)
                 }
-                Text("Saved locally with encryption. Computer sync is not connected in this preview.").font(.footnote).foregroundStyle(.secondary)
+                Text("Saved locally with encryption. Open Computer to sync new accounts.").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
         }.background(Color(uiColor:.systemGroupedBackground)).navigationTitle("Wallet")
             .searchable(text:$search,prompt:"Search your accounts")
