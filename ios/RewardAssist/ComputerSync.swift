@@ -101,7 +101,8 @@ private enum SyncFailure: LocalizedError {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SyncFailure.message("No response from the sync service.") }
         guard (200..<300).contains(http.statusCode) else {
-            throw SyncFailure.message(http.statusCode == 409 ? "Your computer changed the vault. Retry to fetch the latest version." : "Server returned \(http.statusCode). Check your sign-in and connection.")
+            let errorBody = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any]
+            throw SyncFailure.message(errorBody?["message"] as? String ?? "Server returned \(http.statusCode). Check your sign-in and connection.")
         }
         return try JSONSerialization.jsonObject(with:data) as? [String:Any] ?? [:]
     }
