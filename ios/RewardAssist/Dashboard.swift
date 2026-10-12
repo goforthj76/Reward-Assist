@@ -84,12 +84,33 @@ struct DashboardView: View {
 }
 struct BirthdayCalendar: View {
     @EnvironmentObject var wallet: WalletStore
+    private func cards(in month: Int) -> [RewardCard] {
+        wallet.cards.filter { card in
+            guard let birthday = card.birthday else { return false }
+            return Calendar.current.component(.month, from: birthday) == month
+        }
+    }
     var body: some View {
         List {
-            ForEach(1...12,id:\.self) {month in
-                let cards=wallet.cards.filter {card in guard let birthday=card.birthday else{return false};return Calendar.current.component(.month,from:birthday)==month}
-                if !cards.isEmpty {Section(Calendar.current.monthSymbols[month-1]) {ForEach(cards){card in HStack{Text(card.name);Spacer();if let date=card.birthday {Text(date.formatted(.dateTime.month().day())).foregroundStyle(.secondary)}}}}}
-            if wallet.cards.allSatisfy({$0.birthday==nil}) {Text("Add a birthday when saving an account to see it here.").foregroundStyle(.secondary)}
+            ForEach(1...12, id: \.self) { month in
+                let entries = cards(in: month)
+                if !entries.isEmpty {
+                    Section(Calendar.current.monthSymbols[month - 1]) {
+                        ForEach(entries) { card in
+                            HStack {
+                                Text(card.name)
+                                Spacer()
+                                if let date = card.birthday {
+                                    Text(date.formatted(.dateTime.month().day())).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if wallet.cards.allSatisfy({ $0.birthday == nil }) {
+                Text("Add a birthday when saving an account to see it here.").foregroundStyle(.secondary)
+            }
         }.navigationTitle("Birthdays")
     }
 }

@@ -116,13 +116,19 @@ struct CardTile: View {
 struct AddCardView: View {
     @EnvironmentObject var wallet: WalletStore
     @Environment(\.dismiss) var dismiss
-    @State private var name="", email="", memberID="", notes="", password=""
+    @State private var name=""
+    @State private var email=""
+    @State private var memberID=""
+    @State private var notes=""
+    @State private var password=""
     @State private var photo: PhotosPickerItem?
     @State private var qr: Data?
     @State private var error=""
     @State private var importing=false
-    @State private var hasExpiry=false, hasBirthday=false
-    @State private var expiry=Date().addingTimeInterval(86400*7), birthday=Date()
+    @State private var hasExpiry=false
+    @State private var hasBirthday=false
+    @State private var expiry=Date().addingTimeInterval(86400*7)
+    @State private var birthday=Date()
     var body: some View {
         Form {
             Section("Account") {
@@ -166,7 +172,9 @@ struct CardDetail: View {
     @EnvironmentObject var wallet: WalletStore
     @Environment(\.dismiss) var dismiss
     let id: UUID
-    @State private var fullScreen=false, deleting=false, revealing=false
+    @State private var fullScreen=false
+    @State private var deleting=false
+    @State private var revealing=false
     @State private var unlockError=""
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
