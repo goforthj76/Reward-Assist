@@ -8,6 +8,9 @@ private enum SyncFailure: LocalizedError {
 }
 
 @MainActor final class ComputerSync: ObservableObject {
+    @Published var connected = false
+    private var sessionToken: String?
+    private var sessionKey: SymmetricKey?
     @Published var busy = false
     @Published var status = "Sign in with the same Reward Assist account as your computer."
     func sync(email: String, password: String, wallet: WalletStore) async {
@@ -32,6 +35,9 @@ private enum SyncFailure: LocalizedError {
             }
             guard result == kCCSuccess else { throw SyncFailure.message("Could not unlock cloud data.") }
             let key = SymmetricKey(data: derived)
+            sessionToken = token
+            sessionKey = key
+            connected = true
             let response = try await request("/api/vault", token: token)
             var profile: [String:Any] = ["accounts":[],"services":[],"firstName":"","birthday":""]
             let vault = response["vault"] as? [String:Any]
@@ -74,6 +80,17 @@ private enum SyncFailure: LocalizedError {
             status = "Sync complete: \(imported) downloaded, \(uploaded) uploaded. Existing entries were preserved."
         } catch { status = "Sync stopped: \(error.localizedDescription)" }
     }
+    func remoteRead() async throws -> [String:Any] {
+        guard let sessionToken else { throw SyncFailure.message("Sign in first.") }
+        return try await request("/api/remote", token: sessionToken)
+    }
+    func remoteSend(action: String, id: String, device: String, content: [String:Any]) async throws {
+        guard let sessionToken, let sessionKey else { throw SyncFailure.message("Sign in first.") }
+        let sealed = try AES.GCM.seal(JSONSerialization.data(withJSONObject:content), using:sessionKey)
+        let envelope: [String:Any] = ["v":1,"iv":sealed.nonce.withUnsafeBytes { Data($0).base64EncodedString() },"data":(sealed.ciphertext+sealed.tag).base64EncodedString()]
+        let payload = String(decoding:try JSONSerialization.data(withJSONObject:envelope),as:UTF8.self)
+        _ = try await request("/api/remote/"+action,token:sessionToken,body:["id":id,"device":device,"payload":payload])
+    }
     private func request(_ path: String, token: String? = nil, body: [String:Any]? = nil, method: String? = nil) async throws -> [String:Any] {
         var request = URLRequest(url: URL(string:"https://rewards-assistant-api.mrgobeast.workers.dev" + path)!)
         request.timeoutInterval = 30
@@ -107,9 +124,10 @@ struct ComputerSyncView: View {
                 Button(sync.busy ? "Syncing…" : "Sync accounts") { Task { await sync.sync(email:email,password:password,wallet:wallet); password = "" } }.disabled(sync.busy)
                 Text(sync.status).font(.footnote)
             }
+            if sync.connected { Section { NavigationLink("Start a computer task") { RemoteTasksView(sync: sync) } } }
             Section("What sync includes") {
                 Text("New accounts, passwords, notes and QR images. Existing entries are preserved; edits, deletions and reminder dates are currently local to this phone. Use one Reward Assist account for this wallet.")
-                Text("Sign in on the desktop first so it uploads its accounts. Uploaded phone accounts are available in the cloud web wallet. Remote computer tasks are not connected yet.")
+                Text("Sign in on the desktop first so it uploads its accounts. Uploaded phone accounts are available in the cloud web wallet. Enable Phone requests on your updated desktop to start a remote setup task.")
             }
         }.navigationTitle("Computer sync")
     }

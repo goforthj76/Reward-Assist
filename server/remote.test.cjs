@@ -1,0 +1,34 @@
+const {DatabaseSync}=require('node:sqlite');
+const {readFileSync}=require('node:fs');
+const {runInNewContext}=require('node:vm');
+const assert=require('node:assert/strict');
+const sql=new DatabaseSync(':memory:');
+const DB={prepare(query){let args=[];return {bind(...values){args=values;return this},async run(){return sql.prepare(query).run(...args)},async first(){return sql.prepare(query).get(...args)},async all(){return {results:sql.prepare(query).all(...args)}}}}};
+const remote=runInNewContext(readFileSync(__dirname+'/remote.js','utf8')+';remote',{Date,JSON,res:(v,status)=>({value:v,status}),body:async q=>q.data});
+const device='11111111-1111-1111-1111-111111111111', id='22222222-2222-2222-2222-222222222222';
+const payload=JSON.stringify({v:1,iv:'AAAAAAAAAAAAAAAA',data:'A'.repeat(32)});
+const call=(action,data={},user='owner',method='POST')=>remote({method,data:{device,id,...data}},{DB},{pathname:'/api/remote'+(action?'/'+action:'')},{},user);
+(async()=>{
+ assert.equal((await call('submit',{payload})).status,409,'offline computers reject requests');
+ await call('heartbeat');
+ assert.equal((await call('submit',{payload})).status,201);
+ assert.equal((await call('submit',{payload})).status,200,'retry is idempotent');
+ assert.equal((await call('claim',{},'stranger')).value.job,null,'other users cannot claim');
+ assert.equal((await call('claim')).value.job.id,id);
+ assert.equal((await call('claim')).value.job,null,'no duplicate execution');
+ const second='33333333-3333-3333-3333-333333333333';
+ await call('submit',{id:second,payload});
+ assert.equal((await call('claim',{id:second})).value.job,null,'one active job per computer');
+ await call('update',{stage:'waiting_code'});
+ assert.equal((await call('code',{payload},'stranger')).status,409);
+ assert.equal((await call('code',{payload})).status,200);
+ assert.equal((await call('take-code')).value.payload,payload);
+ assert.equal((await call('take-code')).value.payload,null,'code consumed once');
+ await call('update',{stage:'complete'});
+ assert.equal((await call('code',{payload})).status,409,'completed jobs reject codes');
+ const rows=(await call('',{},'stranger','GET')).value.jobs;
+ assert.equal(rows.length,0,'list scoped to account');
+ assert.equal(sql.prepare('SELECT payload FROM remote_jobs WHERE id=?').get(id).payload,'','plaintext never needed and ciphertext cleared');
+ console.log('Remote relay checks passed: ownership, offline rejection, idempotency, single active job, one-use codes and payload cleanup.');
+})().catch(error=>{console.error(error);process.exitCode=1});
+

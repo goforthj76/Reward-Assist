@@ -1,5 +1,8 @@
 name: Build iPhone preview
 on:
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/ios-preview.yml']
   workflow_dispatch:
 permissions:
   contents: read
