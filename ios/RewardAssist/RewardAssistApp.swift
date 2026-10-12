@@ -4,7 +4,7 @@ import UserNotifications
 @main
 struct RewardAssistApp: App {
     @StateObject private var wallet = WalletStore()
-    var body: some Scene { WindowGroup { PrivacyGate { RootView() }.environmentObject(wallet) } }
+    var body: some Scene { WindowGroup { PrivacyGate { TermsGate() }.environmentObject(wallet) } }
 }
 
 struct RootView: View {
@@ -13,7 +13,7 @@ struct RootView: View {
             NavigationStack { DashboardView() }.tabItem { Label("Home", systemImage: "house.fill") }
             NavigationStack { NativeWalletView() }.tabItem { Label("Wallet", systemImage: "wallet.pass.fill") }
             NavigationStack {
-                ContentUnavailableView("No activity yet", systemImage: "clock.arrow.circlepath", description: Text("Computer requests will appear here once secure pairing is available."))
+                ContentUnavailableView("No activity yet", systemImage: "clock.arrow.circlepath", description: Text("Open Computer to view recent requests and their progress."))
                     .navigationTitle("Activity")
             }.tabItem { Label("Activity", systemImage: "clock") }
             NavigationStack { ComputerSyncView() }.tabItem { Label("Computer", systemImage: "desktopcomputer") }
@@ -79,4 +79,5 @@ struct ComputerView: View {
         }.navigationTitle("Computer")
     }
 }
+
 

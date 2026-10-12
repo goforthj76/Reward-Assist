@@ -43,7 +43,7 @@
     body.taco-mode button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #4675c8;outline-offset:3px}
     @media(max-width:650px){.pickup-columns{grid-template-columns:1fr}#tacoOrderPlan{padding:16px}body.taco-mode .taco-person>div{grid-template-columns:1fr!important}}
   </style>
-</head>
+<link rel="stylesheet" href="connection.css"></head>
 <body>
 <section id="authGate" class="gate">
   <div class="gate-card">
@@ -213,4 +213,5 @@ const layoutChoose=choose;choose=function(el){layoutChoose(el);if(selected==='Th
 if(!document.getElementById('tacoPickupTime').value)document.getElementById('tacoPickupTime').value='ASAP';
 </script>
 <script src="pickup-times.js"></script>
-<p style="text-align:center;padding:16px"><a href="terms.html" target="_blank" rel="noopener">Terms of Use (draft)</a></p><script src="admin-reporting.js"></script><script src="remote.js"></script></body></html>
+<p style="text-align:center;padding:16px"><a href="terms.html" target="_blank" rel="noopener">Terms of Use</a></p><script src="admin-reporting.js"></script><script src="remote-taco.js"></script><script src="remote.js"></script><script src="terms-gate.js"></script></body></html>
+

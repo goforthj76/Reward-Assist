@@ -1,6 +1,7 @@
 import SwiftUI
 import CryptoKit
 import CommonCrypto
+import Security
 
 private enum SyncFailure: LocalizedError {
     case message(String)
@@ -8,6 +9,34 @@ private enum SyncFailure: LocalizedError {
 }
 
 @MainActor final class ComputerSync: ObservableObject {
+    @Published var accountEmail = ""
+    private struct SavedSession: Codable { let email: String; let token: String; let key: Data }
+    private let keychainQuery: [String:Any] = [kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:"com.rewardassist.session",kSecAttrAccount as String:"cloud"]
+    init() {
+        var query=keychainQuery
+        query[kSecReturnData as String]=true
+        var result: CFTypeRef?
+        if SecItemCopyMatching(query as CFDictionary,&result)==errSecSuccess,
+           let data=result as? Data, let saved=try? JSONDecoder().decode(SavedSession.self,from:data),
+           saved.key.count==32, UserDefaults.standard.string(forKey:"walletSyncAccount")==saved.email {
+            sessionToken=saved.token; sessionKey=SymmetricKey(data:saved.key)
+            accountEmail=saved.email; connected=true
+            status="Signed in as " + saved.email
+        }
+    }
+    private func remember(email:String, token:String, key:SymmetricKey) throws {
+        let data=try JSONEncoder().encode(SavedSession(email:email,token:token,key:key.withUnsafeBytes { Data($0) }))
+        let attributes: [String:Any]=[kSecValueData as String:data,kSecAttrAccessible as String:kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        var result=SecItemUpdate(keychainQuery as CFDictionary,attributes as CFDictionary)
+        if result==errSecItemNotFound { result=SecItemAdd(keychainQuery.merging(attributes){_,new in new} as CFDictionary,nil) }
+        guard result==errSecSuccess else { throw SyncFailure.message("Could not securely save your sign-in.") }
+        accountEmail=email
+    }
+    func signOut() {
+        SecItemDelete(keychainQuery as CFDictionary)
+        sessionToken=nil; sessionKey=nil; connected=false; accountEmail=""
+        status="Signed out. Your local wallet is still saved."
+    }
     @Published var connected = false
     private var sessionToken: String?
     private var sessionKey: SymmetricKey?
@@ -18,13 +47,20 @@ private enum SyncFailure: LocalizedError {
         busy = true
         defer { busy = false }
         do {
-            let email = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !email.isEmpty, !password.isEmpty else { throw SyncFailure.message("Enter your Reward Assist email and password.") }
+            let email = connected ? accountEmail : email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !email.isEmpty else { throw SyncFailure.message("Enter your Reward Assist email and password.") }
             if let bound = UserDefaults.standard.string(forKey: "walletSyncAccount"), bound != email {
                 throw SyncFailure.message("This wallet is linked to a different Reward Assist account. Sync was stopped to avoid mixing private data.")
             }
+            let token: String
+            let key: SymmetricKey
+            if connected, let savedToken=sessionToken, let savedKey=sessionKey {
+                token=savedToken; key=savedKey
+            } else {
+            guard !password.isEmpty else { throw SyncFailure.message("Enter your Reward Assist password.") }
             let login = try await request("/api/auth/login", body: ["email":email,"password":password])
-            guard let token = login["token"] as? String else { throw SyncFailure.message("Sign-in did not return a session. Try again.") }
+            guard let loginToken = login["token"] as? String else { throw SyncFailure.message("Sign-in did not return a session. Try again.") }
+            token=loginToken
             let salt = Array(("reward-assist:" + email).utf8)
             let passwordBytes = Array(password.utf8)
             var derived = [UInt8](repeating: 0, count: 32)
@@ -34,10 +70,8 @@ private enum SyncFailure: LocalizedError {
                 }
             }
             guard result == kCCSuccess else { throw SyncFailure.message("Could not unlock cloud data.") }
-            let key = SymmetricKey(data: derived)
-            sessionToken = token
-            sessionKey = key
-            connected = true
+            key = SymmetricKey(data: derived)
+            }
             let response = try await request("/api/vault", token: token)
             var profile: [String:Any] = ["accounts":[],"services":[],"firstName":"","birthday":""]
             let vault = response["vault"] as? [String:Any]
@@ -77,12 +111,23 @@ private enum SyncFailure: LocalizedError {
                 _ = try await request("/api/vault", token: token, body:["payload":payload,"expected_version":vault?["version"] as? Int ?? 0], method:"PUT")
             }
             guard wallet.save(cards) else { throw SyncFailure.message("Cloud connection succeeded, but the iPhone wallet could not be saved. Please retry.") }
+            try remember(email:email,token:token,key:key)
+            sessionToken=token; sessionKey=key; connected=true
             status = "Sync complete: \(imported) downloaded, \(uploaded) uploaded. Existing entries were preserved."
         } catch { status = "Sync stopped: \(error.localizedDescription)" }
     }
     func remoteRead() async throws -> [String:Any] {
         guard let sessionToken else { throw SyncFailure.message("Sign in first.") }
         return try await request("/api/remote", token: sessionToken)
+    }
+    func remoteDetails(_ payload: String) throws -> [String:Any] {
+        guard let key=sessionKey,
+              let envelope=try JSONSerialization.jsonObject(with:Data(payload.utf8)) as? [String:Any],
+              envelope["v"] as? Int == 1,
+              let ivText=envelope["iv"] as? String, let iv=Data(base64Encoded:ivText),
+              let text=envelope["data"] as? String, let data=Data(base64Encoded:text),data.count>=16 else { return [:] }
+        let box=try AES.GCM.SealedBox(nonce:AES.GCM.Nonce(data:iv),ciphertext:data.dropLast(16),tag:data.suffix(16))
+        return try JSONSerialization.jsonObject(with:AES.GCM.open(box,using:key)) as? [String:Any] ?? [:]
     }
     func remoteSend(action: String, id: String, device: String, content: [String:Any]) async throws {
         guard let sessionToken, let sessionKey else { throw SyncFailure.message("Sign in first.") }
@@ -100,6 +145,7 @@ private enum SyncFailure: LocalizedError {
         if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SyncFailure.message("No response from the sync service.") }
+        if http.statusCode == 401 && token != nil { signOut() }
         guard (200..<300).contains(http.statusCode) else {
             let errorBody = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any]
             throw SyncFailure.message(errorBody?["message"] as? String ?? "Server returned \(http.statusCode). Check your sign-in and connection.")
@@ -120,8 +166,11 @@ struct ComputerSyncView: View {
                 Text("Download accounts uploaded by your computer and add new iPhone accounts to your encrypted cloud vault.")
             }
             Section("Reward Assist account") {
+                if sync.connected { Text("Signed in as " + sync.accountEmail); Button("Sign out",role:.destructive) { sync.signOut() } }
+                if !sync.connected {
                 TextField("Email", text:$email).textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
                 SecureField("Password", text:$password).textContentType(.password)
+                }
                 Button(sync.busy ? "Syncing…" : "Sync accounts") { Task { await sync.sync(email:email,password:password,wallet:wallet); password = "" } }.disabled(sync.busy)
                 Text(sync.status).font(.footnote)
             }
@@ -133,3 +182,4 @@ struct ComputerSyncView: View {
         }.navigationTitle("Computer sync")
     }
 }
+

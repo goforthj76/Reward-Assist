@@ -4,9 +4,15 @@
   const device=localStorage.rewardAssistComputerID || crypto.randomUUID();
   localStorage.rewardAssistComputerID=device;
   const panel=document.createElement('section');
-  panel.style.cssText='padding:16px;margin:16px;border:1px solid #ccd6e4;border-radius:12px';
-  panel.innerHTML='<h3>Phone requests</h3><label><input type="checkbox"> Allow my phone to start account setup on this computer</label><p>Keep this app open. Finish any local task before enabling. Phone requests can submit signup forms; use only accounts you are authorized to create.</p><small></small>';
-  document.body.append(panel);
+  panel.id='phoneConnectionPanel';
+  panel.hidden=true;
+  panel.innerHTML='<div class="phone-heading"><span class="phone-symbol">↔</span><div><p class="phone-eyebrow">YOUR PHONE + YOUR COMPUTER</p><h2>Connected, wherever you are.</h2><p>Start setup from your iPhone while this computer does the work.</p></div></div><div class="phone-steps"><article><b>01 · Sign in</b><p>Use the same Reward Assist account on both devices.</p></article><article><b>02 · Enable this computer</b><p>Finish any local task, then turn on phone requests below.</p></article><article><b>03 · Connect on iPhone</b><p>Computer → Sync accounts → Start a computer task. Match the computer ID shown here.</p></article></div><div class="phone-control"><label><input type="checkbox"> Allow phone requests</label><p>Computer ID: <strong class="computer-id"></strong></p><small role="status" aria-live="polite"></small></div><p class="phone-footnote">Keep Reward Assist open and your computer awake. Android workflows need a USB-connected phone. Turning this off pauses new requests; a task already started may continue. Requests can submit signup forms. Use only authorized accounts.</p>';
+  const nav=document.createElement('nav');nav.className='companion-tabs';nav.setAttribute('aria-label','Workspace');
+  nav.innerHTML='<button type="button" aria-pressed="true">Rewards workspace</button><button type="button" aria-pressed="false">↔ Phone connection</button>';
+  const workspace=document.querySelector('.shell');
+  if(workspace){workspace.before(nav);workspace.after(panel)}else{document.body.prepend(nav);document.body.append(panel)}
+  panel.querySelector('.computer-id').textContent=device.slice(0,8);
+  nav.querySelectorAll('button').forEach((button,index)=>button.onclick=()=>{panel.hidden=index===0;if(workspace)workspace.hidden=index===1;nav.querySelectorAll('button').forEach((item,i)=>item.setAttribute('aria-pressed',String(i===index)))});
   const toggle=panel.querySelector('input'),status=panel.querySelector('small');
   toggle.onchange=()=>{enabled=toggle.checked;status.textContent=enabled?'Connecting…':'New requests paused. An already-started task may continue.';tick()};
   const call=(action,body={})=>cloudApi('/api/remote/'+action,{method:'POST',body:JSON.stringify({device,...body})});
@@ -29,23 +35,42 @@
           const current=await api(input.app==='Dutch Bros'?'/api/dutch/status':'/api/web/status?app='+encodeURIComponent(input.app));
           if(current.stage && !['idle','complete','attention','error','failed','stopped'].includes(current.stage))throw Error('Finish the existing task on this computer first');
           active={id:job.id,app:input.app};
+          if(input.app==='Taco Bell'){active.taco=new PhoneTacoFlow(input,api);await active.taco.validate()}
           const dutch=input.app==='Dutch Bros';
           await api(dutch?'/api/dutch/start':'/api/web/start',{method:'POST',body:JSON.stringify({app:input.app,details:input.details,...(dutch?{save_qr:true,terms_accepted:true}:{})})});
           await call('update',{id:job.id,stage:'running'});
         }catch(error){await call('update',{id:job.id,stage:'attention'});active=null;throw error}
       }
       if(active){
-        const s=await api(active.app==='Dutch Bros'?'/api/dutch/status':'/api/web/status?app='+encodeURIComponent(active.app));
+        let s=active.state || await api(active.app==='Dutch Bros'?'/api/dutch/status':'/api/web/status?app='+encodeURIComponent(active.app));
+        if(active.taco && s.stage==='complete' && active.taco.phase==='web')s=active.state=await active.taco.afterWeb();
         const stage=s.stage==='complete'?'complete':s.stage==='waiting_code'?'waiting_code':['review_required','ready_for_review'].includes(s.stage)?'review_required':['attention','error','failed','stopped'].includes(s.stage)?'attention':'running';
-        await call('update',{id:active.id,stage});status.textContent=active.app+' · '+stage.replaceAll('_',' ');
+        if(stage==='review_required' && !active.reviewNonce)active.reviewNonce=crypto.randomUUID();
+        const payload=await cloudEncrypt({app:active.app,message:s.message||'',codePhase:s.codePhase||'website',reviewKind:s.reviewKind||'signup',reviewText:s.reviewText||'',nonce:active.reviewNonce||''});
+        await call('update',{id:active.id,stage,payload});status.textContent=active.app+' · '+(s.message||stage.replaceAll('_',' '));
         if(stage==='waiting_code'){
           const {payload}=await call('take-code',{id:active.id});
-          if(payload){const {code}=await cloudDecrypt(payload);if(!/^\d{4,8}$/.test(code))throw Error('Invalid code');await api(active.app==='Dutch Bros'?'/api/dutch/code':'/api/web/code',{method:'POST',body:JSON.stringify({app:active.app,code})})}
+          if(payload){const command=await cloudDecrypt(payload);const code=command.code;if(!/^\d{4,8}$/.test(code))throw Error('Invalid code');
+            if(command.codePhase && command.codePhase!==(s.codePhase||'website'))throw Error('This code belongs to an earlier step.');
+            if(active.taco?.phase==='android_code')active.state=await active.taco.code(code);
+            else await api(active.app==='Dutch Bros'?'/api/dutch/code':'/api/web/code',{method:'POST',body:JSON.stringify({app:active.app,code})});
+          }
+        }
+        if(stage==='review_required'){
+          const {payload}=await call('take-approval',{id:active.id});
+          if(payload){const command=await cloudDecrypt(payload);
+            if(command.accepted!==true||command.nonce!==active.reviewNonce)throw Error('The review changed. Review it again on your phone.');
+            active.reviewNonce=null;
+            if(active.taco?.phase==='checkout_review')active.state=await active.taco.submit();
+            else if(s.stage==='review_required')await api('/api/web/approve',{method:'POST',body:JSON.stringify({app:active.app})});
+            else throw Error('This step needs attention on the host device.');
+          }
         }
         if(['complete','attention'].includes(stage)){active=null;if(stage==='complete')await syncWindowsAccounts()}
       }
-    }catch(error){status.textContent='Connection needs attention: '+error.message}
+    }catch(error){status.textContent='Connection needs attention: '+error.message;if(active){active.state={stage:'attention',message:error.message};try{await call('update',{id:active.id,stage:'attention',payload:await cloudEncrypt({app:active.app,message:error.message})});active=null}catch{}}}
     finally{busy=false}
   }
   setInterval(tick,5000);
 })();
+

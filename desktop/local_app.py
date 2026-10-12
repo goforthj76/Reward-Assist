@@ -63,7 +63,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.36"
+BUILD_VERSION = "0.5.39"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -1273,6 +1273,21 @@ class Handler(SimpleHTTPRequestHandler):
                 }), encoding="utf-8")
                 self.send_json(200, {"ok": True})
                 return
+            if self.path == "/api/taco/review":
+                serial = str(payload.get("device_serial", "")).strip()
+                if not serial or not device_status(serial).get("ok"):
+                    raise ValueError("Connect the selected Android device.")
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("Wait for the current Android step.")
+                try:
+                    texts = _taco_texts(find_adb(), serial)
+                    if "PLACE ORDER" not in texts:
+                        raise ValueError("Android is not showing final checkout. Review on the device.")
+                    result = {"text": "\n".join(texts) if not isinstance(texts, str) else texts}
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200, result)
+                return
             if self.path == "/api/taco/payment":
                 serial = str(payload.get("device_serial", "")).strip()
                 if not serial or not device_status(serial).get("ok"):
@@ -1532,6 +1547,14 @@ def main() -> None:
                 with urlopen(f"http://{HOST}:{PORT}/api/status", timeout=3) as response:
                     running = json.load(response)
                 if running.get("local") is True and running.get("version"):
+                    if running["version"] != BUILD_VERSION:
+                        import tkinter as tk
+                        from tkinter import messagebox
+                        notice = tk.Tk()
+                        notice.withdraw()
+                        messagebox.showwarning("Close the older Reward Assist", f"Reward Assist {running['version']} is still running. This copy is {BUILD_VERSION}.\n\nClose the older app completely, then open this copy again. If it stays running in the background, restart Windows. Your saved profiles will not be deleted.", parent=notice)
+                        notice.destroy()
+                        return
                     open_local_ui()
                     return
             except (OSError, ValueError):
@@ -1552,3 +1575,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

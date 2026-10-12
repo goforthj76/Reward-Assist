@@ -13,7 +13,7 @@ async function remote(q, e, u, c, uid) {
   };
   if(q.method==='GET' && u.pathname==='/api/remote') {
     const devices=await db.prepare('SELECT id,seen FROM remote_devices WHERE user_id=? AND seen>?').bind(uid,now-60000).all();
-    const jobs=await db.prepare('SELECT id,device,stage,updated,created FROM remote_jobs WHERE user_id=? ORDER BY created DESC LIMIT 20').bind(uid).all();
+    const jobs=await db.prepare('SELECT id,device,stage,updated,created,payload FROM remote_jobs WHERE user_id=? ORDER BY created DESC LIMIT 20').bind(uid).all();
     return res({devices:devices.results,jobs:jobs.results},200,c);
   }
   if(q.method!=='POST') return res({message:'Not found.'},404,c);
@@ -42,8 +42,20 @@ async function remote(q, e, u, c, uid) {
   if(u.pathname==='/api/remote/update') {
     const stages=['running','waiting_code','review_required','complete','attention'];
     if(!stages.includes(x.stage)) return res({message:'Invalid stage.'},400,c);
-    await db.prepare("UPDATE remote_jobs SET stage=?,updated=?,payload='' WHERE user_id=? AND id=? AND device=? AND stage IN ('starting','running','waiting_code','review_required')").bind(x.stage,now,uid,x.id,x.device).run();
+    if(x.payload !== undefined && !encrypted(x.payload)) return res({message:'Encrypted status required.'},400,c);
+    await db.prepare("UPDATE remote_jobs SET stage=?,updated=?,payload=? WHERE user_id=? AND id=? AND device=? AND stage IN ('starting','running','waiting_code','review_required')").bind(x.stage,now,x.payload || '',uid,x.id,x.device).run();
     return res({ok:true},200,c);
+  }
+  if(u.pathname==='/api/remote/approve') {
+    if(!encrypted(x.payload)) return res({message:'Encrypted approval required.'},400,c);
+    const row=await db.prepare("UPDATE remote_jobs SET command=? WHERE user_id=? AND id=? AND device=? AND stage='review_required' AND command IS NULL RETURNING id").bind(x.payload,uid,x.id,x.device).first();
+    return res(row?{ok:true}:{message:'Review is no longer waiting, or approval is already pending.'},row?200:409,c);
+  }
+  if(u.pathname==='/api/remote/take-approval') {
+    const row=await db.prepare("SELECT command FROM remote_jobs WHERE user_id=? AND id=? AND device=? AND stage='review_required'").bind(uid,x.id,x.device).first();
+    if(!row?.command) return res({payload:null},200,c);
+    const taken=await db.prepare('UPDATE remote_jobs SET command=NULL WHERE user_id=? AND id=? AND device=? AND command=? RETURNING id').bind(uid,x.id,x.device,row.command).first();
+    return res({payload:taken?row.command:null},200,c);
   }
   if(u.pathname==='/api/remote/code') {
     if(!encrypted(x.payload)) return res({message:'Encrypted code required.'},400,c);
@@ -59,3 +71,4 @@ async function remote(q, e, u, c, uid) {
   }
   return res({message:'Not found.'},404,c);
 }
+

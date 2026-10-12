@@ -5,6 +5,7 @@ import UserNotifications
 struct PrivacyGate<Content: View>: View {
     @Environment(\.scenePhase) private var phase
     @State private var unlocked=false
+    @State private var attempted=false
     @State private var busy=false
     @State private var message=""
     @State private var context: LAContext?
@@ -12,7 +13,10 @@ struct PrivacyGate<Content: View>: View {
     var body: some View {
         ZStack {
             Color(uiColor:.systemGroupedBackground).ignoresSafeArea()
-            if unlocked && phase == .active { content() }
+            if unlocked {
+                content()
+                if phase != .active { Color(uiColor:.systemGroupedBackground).ignoresSafeArea().overlay(Image(systemName:"lock.fill").font(.largeTitle).foregroundStyle(.teal)) }
+            }
             else {
                 VStack(spacing:24) {
                     Image(systemName:"wallet.pass.fill").font(.system(size:68)).foregroundStyle(.teal)
@@ -22,12 +26,14 @@ struct PrivacyGate<Content: View>: View {
                     if !message.isEmpty {Text(message).font(.footnote).foregroundStyle(.secondary)}
                 }.padding(32)
             }
-        }.onChange(of:phase) { _, value in
-            if value == .background {unlocked=false; context?.invalidate()}
+        }.task { if phase == .active && !attempted { await unlock() } }
+        .onChange(of:phase) { _, value in
+            if value == .active && !attempted { Task { await unlock() } }
         }
     }
     @MainActor private func unlock() async {
-        busy=true;defer{busy=false}
+        guard !busy && !unlocked else { return }
+        attempted=true;busy=true;defer{busy=false;context=nil}
         let auth=LAContext();context=auth
         do { unlocked=try await auth.evaluatePolicy(.deviceOwnerAuthentication,localizedReason:"Unlock your private rewards wallet");message="" }
         catch {unlocked=false;message="Unlock was not completed. Set up a device passcode and try again. LiveContainer authentication needs testing on your device."}
@@ -114,3 +120,4 @@ struct BirthdayCalendar: View {
         }.navigationTitle("Birthdays")
     }
 }
+

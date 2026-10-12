@@ -24,11 +24,19 @@ const call=(action,data={},user='owner',method='POST')=>remote({method,data:{dev
  assert.equal((await call('code',{payload})).status,200);
  assert.equal((await call('take-code')).value.payload,payload);
  assert.equal((await call('take-code')).value.payload,null,'code consumed once');
+ await call('update',{stage:'review_required',payload});
+ assert.equal((await call('approve',{payload},'stranger')).status,409);
+ assert.equal((await call('approve',{payload})).status,200);
+ assert.equal((await call('approve',{payload})).status,409,'duplicate approval rejected');
+ assert.equal((await call('take-approval')).value.payload,payload);
+ assert.equal((await call('take-approval')).value.payload,null,'approval consumed once');
  await call('update',{stage:'complete'});
+ assert.equal((await call('approve',{payload})).status,409,'completed jobs reject approval');
  assert.equal((await call('code',{payload})).status,409,'completed jobs reject codes');
  const rows=(await call('',{},'stranger','GET')).value.jobs;
  assert.equal(rows.length,0,'list scoped to account');
  assert.equal(sql.prepare('SELECT payload FROM remote_jobs WHERE id=?').get(id).payload,'','plaintext never needed and ciphertext cleared');
  console.log('Remote relay checks passed: ownership, offline rejection, idempotency, single active job, one-use codes and payload cleanup.');
 })().catch(error=>{console.error(error);process.exitCode=1});
+
 
