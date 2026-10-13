@@ -14,10 +14,11 @@ targets:
         PRODUCT_NAME: RewardAssist
         MARKETING_VERSION: '0.3.4'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CURRENT_PROJECT_VERSION: '7'
+        CURRENT_PROJECT_VERSION: '8'
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Reward Assist
         INFOPLIST_KEY_NSFaceIDUsageDescription: Verify your identity before revealing saved account passwords.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Wake your sleeping computer over your local home network.
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: '1,2'

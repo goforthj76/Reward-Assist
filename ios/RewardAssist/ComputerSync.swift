@@ -163,12 +163,47 @@ private enum SyncFailure: LocalizedError {
 }
 
 enum WakeOnLAN {
+    private static func discoverBroadcastAddresses() -> [String] {
+        var targets = [String]()
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        if getifaddrs(&ifaddr) == 0, let first = ifaddr {
+            var ptr: UnsafeMutablePointer<ifaddrs>? = first
+            while let current = ptr {
+                let flags = Int32(current.pointee.ifa_flags)
+                let isUp = (flags & IFF_UP) != 0
+                let isRunning = (flags & IFF_RUNNING) != 0
+                let isLoopback = (flags & IFF_LOOPBACK) != 0
+                let isBroadcast = (flags & IFF_BROADCAST) != 0
+
+                if isUp && isRunning && !isLoopback && isBroadcast {
+                    if let addr = current.pointee.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET) {
+                        if let dst = current.pointee.ifa_dstaddr {
+                            var sin = sockaddr_in()
+                            memcpy(&sin, dst, MemoryLayout<sockaddr_in>.size)
+                            var ipBuf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                            if inet_ntop(AF_INET, &sin.sin_addr, &ipBuf, socklen_t(INET_ADDRSTRLEN)) != nil {
+                                let ipStr = String(cString: ipBuf)
+                                if !targets.contains(ipStr) && ipStr != "0.0.0.0" {
+                                    targets.append(ipStr)
+                                }
+                            }
+                        }
+                    }
+                }
+                ptr = current.pointee.ifa_next
+            }
+            freeifaddrs(first)
+        }
+        if !targets.contains("255.255.255.255") {
+            targets.append("255.255.255.255")
+        }
+        return targets
+    }
+
     @discardableResult
     static func send(mac: String, ports: [UInt16] = [9, 7]) -> (Bool, String) {
-        let clean = mac.replacingOccurrences(of: ":", with: "")
-                       .replacingOccurrences(of: "-", with: "")
-                       .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard clean.count == 12, clean.range(of: "^[0-9a-fA-F]{12}$", options: .regularExpression) != nil else {
+        let clean = mac.uppercased().replacingOccurrences(of: "[^0-9A-F]", with: "", options: .regularExpression)
+        guard clean.count == 12 else {
             return (false, "Enter a valid 12-digit MAC address (e.g. 34:5A:60:BA:70:7C).")
         }
         var macBytes = [UInt8]()
@@ -185,30 +220,50 @@ enum WakeOnLAN {
         for _ in 0..<16 {
             packet.append(contentsOf: macBytes)
         }
-        var anySuccess = false
-        for port in ports {
-            let sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
-            if sock < 0 { continue }
-            var broadcast: Int32 = 1
-            setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, socklen_t(MemoryLayout<Int32>.size))
-            var addr = sockaddr_in()
-            addr.sin_family = sa_family_t(AF_INET)
-            addr.sin_port = port.bigEndian
-            addr.sin_addr.s_addr = inet_addr("255.255.255.255")
-            let sent = packet.withUnsafeBytes { buffer in
-                withUnsafePointer(to: &addr) { addrPtr in
-                    addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                        sendto(sock, buffer.baseAddress, buffer.count, 0, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+
+        let targets = discoverBroadcastAddresses()
+        var successCount = 0
+        var lastError: String? = nil
+        let IP_ONESBCAST: Int32 = 23
+
+        for targetIp in targets {
+            for port in ports {
+                let sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+                if sock < 0 {
+                    lastError = "Socket error (\(errno))"
+                    continue
+                }
+
+                var broadcastOpt: Int32 = 1
+                setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcastOpt, socklen_t(MemoryLayout<Int32>.size))
+                setsockopt(sock, IPPROTO_IP, IP_ONESBCAST, &broadcastOpt, socklen_t(MemoryLayout<Int32>.size))
+
+                var addr = sockaddr_in()
+                addr.sin_family = sa_family_t(AF_INET)
+                addr.sin_port = port.bigEndian
+                addr.sin_addr.s_addr = inet_addr(targetIp)
+
+                let sent = packet.withUnsafeBytes { buf in
+                    withUnsafePointer(to: &addr) { addrPtr in
+                        addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                            sendto(sock, buf.baseAddress, buf.count, 0, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+                        }
                     }
                 }
+                if sent == packet.count {
+                    successCount += 1
+                } else if lastError == nil {
+                    lastError = String(cString: strerror(errno))
+                }
+                close(sock)
             }
-            close(sock)
-            if sent == packet.count { anySuccess = true }
         }
-        if anySuccess {
-            return (true, "Wake signal sent! Allow 5–10 seconds for your computer to wake from sleep.")
+
+        if successCount > 0 {
+            return (true, "Wake signal broadcast sent! Allow 5–10 seconds for your computer to wake from sleep.")
         } else {
-            return (false, "Could not broadcast wake packet on the local Wi-Fi network.")
+            let detail = lastError.map { ": \($0)" } ?? "."
+            return (false, "Could not broadcast wake packet on local Wi-Fi\(detail). Verify iOS Local Network permissions are allowed in iPhone Settings > Reward Assist.")
         }
     }
 }
