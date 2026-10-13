@@ -33,7 +33,7 @@
       if(enabled)await call('heartbeat');
       const remoteState=await cloudApi('/api/remote');
       if(active && remoteState.jobs.find(j=>j.id===active.id)?.cancel_requested){
-        if(active.app==='Dutch Bros')throw Error('Stop the Android helper on the computer before restarting it.');
+        if(active.app==='Dutch Bros' || (active.taco && active.taco.phase!=='web')){status.textContent='Cancellation requested. Check and stop the Android task on the computer before clearing this request.';return}
         await api('/api/web/cancel',{method:'POST',body:JSON.stringify({app:active.app})});
         await call('update',{id:active.id,stage:'cancelled'});active=null;status.textContent='Task cancelled. Already-submitted actions are not undone.';return;
       }
@@ -89,4 +89,3 @@
   }
   setInterval(tick,5000);
 })();
-
