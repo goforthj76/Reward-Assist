@@ -53,6 +53,20 @@ If your computer connects via Wi-Fi rather than an Ethernet cable, Wake-on-LAN r
 5. **BIOS / Motherboard**: During boot, press `Del` or `F2` to enter BIOS. Under **Advanced / ACPI / APM Configuration**, enable **"PCIe / PME Wake"** and **"Wake on LAN / WLAN"**.
 6. **Smart Plug Fallback**: If your Wi-Fi card shuts off completely in sleep mode, configure your motherboard BIOS setting **"Restore AC Power Loss"** to **"Power On"** and plug your PC into a smart plug (e.g., Kasa/Tapo). Toggling the smart plug powers the PC on reliably from anywhere.
 
+### Remote Wake Away From Home (Tailscale Setup)
+
+To wake your computer when you are out of the house on cellular data (LTE/5G) using **Tailscale**:
+
+1. **How It Works**: Tailscale creates a secure, encrypted personal network between your devices without opening router ports. Because a sleeping PC's operating system is suspended, you need one device at home on your Wi-Fi to act as a **Subnet Router** to deliver the wake packet to your PC's Ethernet card.
+2. **Setting Up the Home Subnet Router**:
+   - **Using an Apple TV (Easiest)**: Install the Tailscale app on your Apple TV from the tvOS App Store. Sign in, and enable **"Run as Exit Node / Subnet Router"**.
+   - **Using the Connected Android Device**: Install Tailscale from Google Play on your connected Android phone. Sign in with the same account, tap the three dots → **Settings** → enable **Subnet Routing** for your home subnet (e.g., `192.168.4.0/24`).
+   - **In Tailscale Admin Console**: Go to [login.tailscale.com/admin/machines](https://login.tailscale.com/admin/machines), click the three dots next to your subnet router device → **Edit route settings** → approve the subnet route.
+3. **On Your iPhone**:
+   - Install **Tailscale** from the App Store and sign in with the same account.
+   - Toggle Tailscale **Connected**.
+   - Open **Reward Assist** → tap **Wake computer now**. The wake broadcast packet will route through your home Tailscale subnet router directly to your PC, turning it on from anywhere!
+
 ### Recent fixes & improvements (0.5.42 - 0.5.43)
 
 - Fixes Nothing Bundt Cakes birthday day selection by waiting for day choices to populate after selecting the month, and validates the full date before submission.
