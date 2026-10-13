@@ -316,6 +316,25 @@ def get_primary_mac_address() -> str:
     return ":".join(f"{(node >> (i * 8)) & 0xff:02X}" for i in reversed(range(6)))
 
 
+def get_primary_ip_address() -> str:
+    try:
+        cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+               "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Ethernet*' | Where-Object IPAddress -notlike '169.254*' | Select-Object -First 1).IPAddress"]
+        out = run_hidden(cmd, capture_output=True, text=True, timeout=5).stdout.strip()
+        if out and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", out):
+            return out
+    except Exception:
+        pass
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
 def _taco_ui(adb: str, serial: str) -> ET.Element:
     run_hidden(adb_target(adb, serial, "shell", "uiautomator", "dump", "/sdcard/reward-assist.xml"),
                    check=True, capture_output=True, text=True, timeout=20)
@@ -925,6 +944,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(200, {
                 "local": True, "version": BUILD_VERSION, "profiles": profiles, "warning": PROFILE_WARNING,
                 "mac": get_primary_mac_address(),
+                "ip": get_primary_ip_address(),
             })
             return
         if self.path == "/api/system/network":

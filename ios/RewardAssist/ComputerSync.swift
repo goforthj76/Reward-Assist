@@ -198,13 +198,13 @@ enum WakeOnLAN {
             targets.append("255.255.255.255")
         }
         let commonSubnets = [
-            "192.168.7.255", // eero /22 subnet broadcast (user's exact eero network!)
-            "192.168.4.255", // alternative eero /24 broadcast
-            "192.168.4.155", // user's PC LAN IP (direct unicast for Tailscale)
-            "192.168.1.255", // standard router / Frontier default
-            "192.168.0.255", // standard home router
+            "192.168.7.255", // eero /22 subnet broadcast
+            "192.168.4.255",
+            "192.168.4.155",
+            "192.168.1.255",
+            "192.168.0.255",
             "192.168.2.255",
-            "10.0.0.255"     // common cable router
+            "10.0.0.255"
         ]
         for ip in commonSubnets {
             if !targets.contains(ip) {
@@ -291,13 +291,27 @@ struct ComputerSyncView: View {
     @StateObject private var sync = ComputerSync()
     @State private var email = ""
     @State private var password = ""
+    @AppStorage("enableAdvancedWake") private var showAdvancedWake = false
     @AppStorage("remoteWakeMac") private var wakeMac = ""
     @AppStorage("remoteWakeIP") private var wakeIP = ""
     @State private var wakeStatus = ""
+    @State private var secretTapCount = 0
+
     var body: some View {
         Form {
             Section {
-                Label("Your wallet, connected", systemImage:"arrow.triangle.2.circlepath").font(.title2.bold())
+                Label("Your wallet, connected", systemImage:"arrow.triangle.2.circlepath")
+                    .font(.title2.bold())
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        secretTapCount += 1
+                        if secretTapCount >= 5 {
+                            secretTapCount = 0
+                            showAdvancedWake.toggle()
+                            let generator = UINotificationFeedbackGenerator()
+                            generator.notificationOccurred(.success)
+                        }
+                    }
                 Text("Download accounts uploaded by your computer and add new iPhone accounts to your encrypted cloud vault.")
             }
             Section("Reward Assist account") {
@@ -310,41 +324,34 @@ struct ComputerSyncView: View {
                 Text(sync.status).font(.footnote)
             }
             if sync.connected { Section { NavigationLink("Start a computer task") { RemoteTasksView(sync: sync) } } }
-            Section("Remote computer wake (Wake-on-LAN)") {
-                Text("Wake your sleeping Windows PC over your local Wi-Fi or Tailscale without needing to keep it running 24/7.")
-                TextField("PC MAC address (from Windows app)", text:$wakeMac)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("PC Local IP (optional, e.g. 192.168.4.155 for Tailscale)", text:$wakeIP)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button(action: {
-                    let (_, msg) = WakeOnLAN.send(mac: wakeMac, targetIP: wakeIP)
-                    wakeStatus = msg
-                }) {
-                    Label("Wake computer now", systemImage:"bolt.fill")
-                }
-                .disabled(wakeMac.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if !wakeStatus.isEmpty {
-                    Text(wakeStatus).font(.footnote).foregroundStyle(.secondary)
-                }
-                DisclosureGroup("How to enable Remote Wake (Ethernet & Wi-Fi)") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("• BIOS (Required for all PCs):").font(.caption.bold())
-                        Text("Restart PC, tap Del or F2. In Advanced → Wake Up Event Setup, set Resume By PCI-E Device to Enabled and ErP Ready to Disabled.").font(.caption2).foregroundStyle(.secondary)
-                        Text("• If on Ethernet:").font(.caption.bold())
-                        Text("In Device Manager → LAN adapter → Advanced, set WOL & Shutdown Link Speed to 100 Mbps First (or Not Speed Down) and Green Ethernet to Disabled.").font(.caption2).foregroundStyle(.secondary)
-                        Text("• If on Wi-Fi (WoWLAN):").font(.caption.bold())
-                        Text("In Device Manager → Wi-Fi adapter → Power Management, check Allow this device to wake the computer. In Advanced, enable Wake on Magic Packet & WoWLAN. Disable Windows Fast Startup.").font(.caption2).foregroundStyle(.secondary)
-                        Text("• Seamless Tasks (Skip Password on Wake):").font(.caption.bold())
-                        Text("In Windows Settings → Accounts → Sign-in options, set 'Require sign-in when away' to Never so requested tasks run immediately upon waking.").font(.caption2).foregroundStyle(.secondary)
-                        Text("• Away From Home (Cellular / Outside Wi-Fi):").font(.caption.bold())
-                        Text("To wake your computer from cellular, run Tailscale on an always-on device (Apple TV or connected Android) with Subnet Routing enabled so your iPhone can reach your home network, or use a smart plug with BIOS AC Restore.").font(.caption2).foregroundStyle(.secondary)
+
+            if showAdvancedWake {
+                Section("Advanced: Remote computer wake (Wake-on-LAN)") {
+                    Text("Wake your sleeping Windows PC over your local Wi-Fi without leaving it running 24/7.")
+                    TextField("PC MAC address (from Windows app)", text:$wakeMac)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("PC Local IP (optional)", text:$wakeIP)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button(action: {
+                        let (_, msg) = WakeOnLAN.send(mac: wakeMac, targetIP: wakeIP)
+                        wakeStatus = msg
+                    }) {
+                        Label("Wake computer now", systemImage:"bolt.fill")
                     }
-                    .padding(.vertical, 4)
+                    .disabled(wakeMac.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if !wakeStatus.isEmpty {
+                        Text(wakeStatus).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Button("Hide advanced wake options") {
+                        showAdvancedWake = false
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.footnote)
             }
+
             Section("What sync includes") {
                 Text("New accounts, passwords, notes and QR images. Existing entries are preserved; edits, deletions and reminder dates are currently local to this phone. Use one Reward Assist account for this wallet.")
                 Text("Sign in on the desktop first so it uploads its accounts. Uploaded phone accounts are available in the cloud web wallet. Enable Phone requests on your updated desktop to start a remote setup task.")
@@ -352,3 +359,5 @@ struct ComputerSyncView: View {
         }.navigationTitle("Computer sync")
     }
 }
+
+
