@@ -63,13 +63,14 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.39"
+BUILD_VERSION = "0.5.40"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
 RELAYS: dict[str, dict[str, object]] = {}
 RELAYS_LOCK = threading.Lock()
 BUNDT_SESSION = {}
+WEB_LAST_SEEN = {}
 BUNDT_LOCK = threading.Lock()
 TACO_CHECKOUT_LOCK = threading.Lock()
 ALL_FIELDS = ("first_name", "last_name", "phone", "email", "zip_code", "birthday")
@@ -788,6 +789,26 @@ def poll_relay(app: str, session_root: Path) -> None:
         }), encoding="utf-8")
 
 
+def stop_web_task(app):
+    if app == "Nothing Bundt Cakes":
+        with BUNDT_LOCK:
+            BUNDT_SESSION.clear()
+            BUNDT_SESSION["status"] = {"stage":"idle","message":"Setup stopped."}
+    elif app == "The Cheesecake Factory":
+        CHEESECAKE.stop()
+        CHEESECAKE.status = {"stage":"idle","message":"Setup stopped."}
+    elif app in {"Taco Bell", "Wendy's"}:
+        slug = re.sub(r"[^A-Za-z]+", "-", app).strip("-").lower()
+        root = WEB_SESSION_ROOT / slug
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "task.json").write_text(json.dumps({"active":False}), encoding="utf-8")
+        cancel_relay(app)
+        (root / "status.json").write_text(json.dumps({"stage":"idle","message":"Setup stopped. Existing orders are unchanged."}), encoding="utf-8")
+    else:
+        raise ValueError("This helper cannot be stopped remotely. Check the host device.")
+    WEB_LAST_SEEN.pop(app, None)
+
+
 class Handler(SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
@@ -820,6 +841,16 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed_url = urlparse(self.path)
         query = parse_qs(parsed_url.query)
+        app = query.get("app", [""])[0]
+        if parsed_url.path == "/api/extension/task":
+            WEB_LAST_SEEN[app] = time.monotonic()
+        if parsed_url.path == "/api/web/status" and app in WEB_LAST_SEEN and time.monotonic()-WEB_LAST_SEEN[app] > 60:
+            stop_web_task(app)
+            self.send_json(200, {"stage":"attention", "message":"Chrome stopped responding or its tab was closed. This task was stopped, not retried. Check whether signup completed before starting another request."})
+            return
+        if parsed_url.path in {"/", "/index.html"}:
+            self.send_bytes(200, (WEB_ROOT / "index.html").read_text(encoding="utf-8").replace("__BUILD_VERSION__", BUILD_VERSION).encode("utf-8"), "text/html; charset=utf-8")
+            return
         if query.get("app", [""])[0] == "The Cheesecake Factory":
             if parsed_url.path == "/api/extension/task":
                 self.send_json(200, CHEESECAKE.task())
@@ -926,6 +957,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             payload = self.read_json()
+            if self.path == "/api/web/start": WEB_LAST_SEEN[str(payload.get("app", ""))] = time.monotonic()
             if payload.get("app") == "The Cheesecake Factory":
                 if self.path == "/api/web/start":
                     queue = parse_detail_blocks(str(payload.get("details", "")), WEB_REQUIRED + ("phone", "password", "restaurant"))
@@ -1261,17 +1293,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if self.path == "/api/web/cancel":
                 app = str(payload.get("app", ""))
-                if app != "Taco Bell":
-                    raise ValueError("Choose Taco Bell to end this group.")
-                # Match the lowercase slug used by the signup/status endpoints.
-                session_root = WEB_SESSION_ROOT / "taco-bell"
-                session_root.mkdir(parents=True, exist_ok=True)
-                (session_root / "task.json").write_text(json.dumps({"active": False}), encoding="utf-8")
-                cancel_relay(app)
-                (session_root / "status.json").write_text(json.dumps({
-                    "stage": "idle", "message": "Group ended. Any open checkout remains in Taco Bell."
-                }), encoding="utf-8")
-                self.send_json(200, {"ok": True})
+                stop_web_task(app)
+                self.send_json(200, {"ok":True,"message":"Automation stopped. Any already-submitted signup or order is not undone."})
                 return
             if self.path == "/api/taco/review":
                 serial = str(payload.get("device_serial", "")).strip()

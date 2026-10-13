@@ -9,7 +9,7 @@ function acknowledgeDiagnostics(){
 async function reportDiagnostic(stage){
  if(!diagnosticsEnabled()||!diagnosticRun||!diagnosticStages.has(stage)||diagnosticRun.last===stage)return;
  const run=diagnosticRun;
- try{await cloudApi('/api/reports',{method:'POST',body:JSON.stringify({run_id:run.id,program:run.program,version:'0.5.36',stage})});run.last=stage}catch{}
+ try{await cloudApi('/api/reports',{method:'POST',body:JSON.stringify({run_id:run.id,program:run.program,version:document.getElementById('buildVersion').textContent.replace('LOCAL BETA v',''),stage})});run.last=stage}catch{}
 }
 const diagnosticApi=api;
 api=async function(path,options={}){
@@ -36,3 +36,4 @@ showAdminPanel=async function(){
 };
 const diagnosticControl=document.createElement('section');diagnosticControl.style.cssText='padding:16px;margin:16px;border:1px solid #d8e0ef;border-radius:12px';
 diagnosticControl.innerHTML='<strong>Required diagnostic reporting</strong><p>Guided setup sends program, version, run ID, timestamps and stage, associated with your account, to Reward Assist through Cloudflare. Reports cover 90 days. Passwords, codes, payments and raw messages are excluded.</p>';document.querySelector('main')?.append(diagnosticControl);
+

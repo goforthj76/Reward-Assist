@@ -78,6 +78,10 @@ struct RemoteTasksView: View {
                             Toggle("I reviewed and accept this step",isOn:Binding(get:{acceptedReviews.contains(nonce)},set:{if $0 {acceptedReviews.insert(nonce)} else {acceptedReviews.remove(nonce)}}))
                             Button(job.info["reviewKind"] as? String == "order" ? "Place this order" : "Accept terms and continue") { Task { await approve(job,nonce:nonce) } }.disabled(busy || !acceptedReviews.contains(nonce))
                         }
+                        if ["queued","starting","running","waiting_code","review_required"].contains(job.stage) {
+                            Button("Cancel request",role:.destructive) {Task {await cancel(job)}}.disabled(busy)
+                            Text("Cancellation stops future steps when the computer checks in. It cannot undo a submitted account or order.").font(.caption)
+                        }
                         if job.stage == "starting" { Text("If interrupted, check the computer. This request will not automatically restart.").font(.footnote) }
                     }
                 }
@@ -123,6 +127,11 @@ struct RemoteTasksView: View {
         } catch { message = error.localizedDescription }
         busy = false
         await refresh()
+    }
+    @MainActor private func cancel(_ job: RemoteJob) async {
+        busy=true;defer{busy=false}
+        do {try await sync.remoteSend(action:"cancel",id:job.id,device:job.device,content:[:]);message="Cancellation requested. Waiting for computer acknowledgement."}
+        catch {message=error.localizedDescription}
     }
     @MainActor private func approve(_ job: RemoteJob, nonce:String) async {
         busy=true

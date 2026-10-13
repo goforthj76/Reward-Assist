@@ -41,7 +41,16 @@
         } else if (++attempts >= 60) {done = true; await report('attention');}
         return;
       }
-      if (!task.details || !location.pathname.startsWith('/customer/account/create')) return;
+      if (!task.details) return;
+      if (!location.pathname.startsWith('/customer/account/create')) {
+        const key='rewardAssistLogout:'+session;
+        const logout=[...document.querySelectorAll('a[href]')].find(a=>/^(sign out|log out|logout)$/i.test(a.textContent.trim()) && new URL(a.href).origin===location.origin);
+        if(logout && !sessionStorage.getItem(key)){sessionStorage.setItem(key,'1');logout.click();return;}
+        const loggedOut=/you (?:are|have been) logged out/i.test(document.body.innerText) || document.querySelector('input[type="password"]');
+        if(loggedOut){location.assign('/customer/account/create/');return;}
+        if(++attempts>=45){done=true;await report('attention');}
+        return;
+      }
       const d = task.details, date = d.birthday.split('-');
       // These IDs were inspected on the official signup page. Never infer checkbox order.
       let ok = true;
@@ -73,3 +82,4 @@
   setInterval(() => run().catch(() => {}), 1000);
   run().catch(() => {});
 })();
+

@@ -36,6 +36,14 @@ const call=(action,data={},user='owner',method='POST')=>remote({method,data:{dev
  const rows=(await call('',{},'stranger','GET')).value.jobs;
  assert.equal(rows.length,0,'list scoped to account');
  assert.equal(sql.prepare('SELECT payload FROM remote_jobs WHERE id=?').get(id).payload,'','plaintext never needed and ciphertext cleared');
+ await call('cancel',{id:second});
+ assert.equal((await call('claim',{id:second})).value.job,null,'cancelled queued job cannot start');
+ const third='44444444-4444-4444-4444-444444444444';
+ await call('submit',{id:third,payload});await call('claim',{id:third});
+ await call('cancel',{id:third});
+ assert.equal(sql.prepare('SELECT stage FROM remote_jobs WHERE id=?').get(third).stage,'starting','active cancellation waits for host');
+ await call('update',{id:third,stage:'cancelled'});
+ assert.equal(sql.prepare('SELECT stage FROM remote_jobs WHERE id=?').get(third).stage,'cancelled');
  console.log('Remote relay checks passed: ownership, offline rejection, idempotency, single active job, one-use codes and payload cleanup.');
 })().catch(error=>{console.error(error);process.exitCode=1});
 

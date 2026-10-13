@@ -17,14 +17,30 @@
   toggle.onchange=()=>{enabled=toggle.checked;status.textContent=enabled?'Connecting…':'New requests paused. An already-started task may continue.';tick()};
   const call=(action,body={})=>cloudApi('/api/remote/'+action,{method:'POST',body:JSON.stringify({device,...body})});
   const allowed=new Set(['Nothing Bundt Cakes','The Cheesecake Factory','Taco Bell','Dutch Bros']);
+  const recovery=document.createElement('button');recovery.textContent='Stop abandoned web tasks and clear queue';recovery.type='button';recovery.className='secondary';panel.querySelector('.phone-control').append(recovery);
+  async function stopWeb(){for(const app of ['Nothing Bundt Cakes','The Cheesecake Factory','Taco Bell',"Wendy's"])await api('/api/web/cancel',{method:'POST',body:JSON.stringify({app})})}
+  recovery.onclick=async()=>{
+    if(busy){status.textContent='Wait for the current step to finish.';return}
+    if(!confirm('Stop web automation and cancel queued requests? This does not undo accounts or orders already submitted.'))return;
+    busy=true;
+    try{const dutch=await api('/api/dutch/status');if(dutch.stage&&!['idle','complete','attention','error','failed','stopped'].includes(dutch.stage))throw Error('An Android helper is active. Finish it before recovery.');await stopWeb();const data=await cloudApi('/api/remote');for(const j of data.jobs.filter(j=>j.device===device&&['queued','starting','running','waiting_code','review_required'].includes(j.stage))){await call('cancel',{id:j.id});if(j.stage!=='queued')await call('update',{id:j.id,stage:'cancelled'})}active=null;status.textContent='Queue cleared. Check previous signup results before starting a new task.';}catch(e){status.textContent=e.message}finally{busy=false}
+  };
   async function tick(){
     if(busy||(!enabled&&!active))return;
     if(!cloudKey){status.textContent='Sign in again to unlock the connection.';return}
     busy=true;
     try{
       if(enabled)await call('heartbeat');
+      const remoteState=await cloudApi('/api/remote');
+      if(active && remoteState.jobs.find(j=>j.id===active.id)?.cancel_requested){
+        if(active.app==='Dutch Bros')throw Error('Stop the Android helper on the computer before restarting it.');
+        await api('/api/web/cancel',{method:'POST',body:JSON.stringify({app:active.app})});
+        await call('update',{id:active.id,stage:'cancelled'});active=null;status.textContent='Task cancelled. Already-submitted actions are not undone.';return;
+      }
       if(!active&&enabled){
-        const data=await cloudApi('/api/remote');
+        const data=remoteState;
+        const abandoned=data.jobs.filter(j=>j.device===device&&['starting','running','waiting_code','review_required'].includes(j.stage));
+        for(const j of abandoned.filter(j=>j.cancel_requested)){const d=await api('/api/dutch/status');if(d.stage&&!['idle','complete','attention','error','failed','stopped'].includes(d.stage))throw Error('Check the Android helper on the computer.');await stopWeb();await call('update',{id:j.id,stage:'cancelled'});return}
         if(data.jobs.some(j=>j.device===device&&['starting','running','waiting_code','review_required'].includes(j.stage))){status.textContent='An earlier task needs checking on this computer. It will not be restarted automatically.';return}
         const queued=data.jobs.find(j=>j.device===device&&j.stage==='queued');
         if(!queued){status.textContent='Ready · computer '+device.slice(0,8);return}
