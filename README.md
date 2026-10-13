@@ -35,6 +35,24 @@ Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories,
 - **Ethernet MAC Detection**: The Windows app automatically detects and displays your PC's Ethernet MAC address in the *Phone connection* tab for easy entry on iPhone.
 - **Automated Android Screen Wake & Sleep**: ADB tasks automatically wake the Android device screen when a task begins, and return it to sleep when finished or cancelled.
 
+### Android Device Configuration
+
+To let Reward Assist wake your phone and automate app tasks:
+1. **Developer Options**: Open Android **Settings** → **About phone** → tap **Build number** 7 times until developer options are unlocked.
+2. **Enable USB Debugging**: Go to **Settings** → **System** (or Additional Settings) → **Developer options** → toggle **USB debugging** ON.
+3. **Authorize Computer**: Plug the Android phone into the Windows PC via USB cable. When the "Allow USB debugging?" dialog appears on the phone, check **"Always allow from this computer"** and tap **Allow**.
+4. **Lock Screen Setting**: Change your screen lock to **Swipe** or **None** (Settings → Security / Lock screen), or in Developer options enable **"Stay awake while charging"**. Automated restaurant apps cannot navigate past a PIN, password, or fingerprint lock screen without manual input.
+
+### Wireless / Wi-Fi Wake Instructions (WoWLAN)
+
+If your computer connects via Wi-Fi rather than an Ethernet cable, Wake-on-LAN requires Wake-on-Wireless-LAN (WoWLAN) support:
+1. **Device Manager**: Press `Win + X` → open **Device Manager** → expand **Network adapters** → double-click your Wi-Fi adapter (e.g. Intel Wi-Fi 6, Realtek 8821CE).
+2. **Power Management**: Click the **Power Management** tab. Check **"Allow this device to wake the computer"** and **"Only allow a magic packet to wake the computer"**.
+3. **Advanced Adapter Settings**: Click the **Advanced** tab. Enable **Wake on Magic Packet**, **Wake on Pattern Match**, and **WoWLAN** (if listed).
+4. **Turn Off Windows Fast Startup**: Fast Startup hibernates the kernel and turns off Wi-Fi card power. Open **Control Panel** → **Power Options** → **"Choose what the power buttons do"** → click **"Change settings that are currently unavailable"** → uncheck **"Turn on fast startup"** (or run `powercfg -h off` in an administrator command prompt).
+5. **BIOS / Motherboard**: During boot, press `Del` or `F2` to enter BIOS. Under **Advanced / ACPI / APM Configuration**, enable **"PCIe / PME Wake"** and **"Wake on LAN / WLAN"**.
+6. **Smart Plug Fallback**: If your Wi-Fi card shuts off completely in sleep mode, configure your motherboard BIOS setting **"Restore AC Power Loss"** to **"Power On"** and plug your PC into a smart plug (e.g., Kasa/Tapo). Toggling the smart plug powers the PC on reliably from anywhere.
+
 ### Recent fixes & improvements (0.5.42 - 0.5.43)
 
 - Fixes Nothing Bundt Cakes birthday day selection by waiting for day choices to populate after selecting the month, and validates the full date before submission.

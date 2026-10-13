@@ -8,6 +8,7 @@ import tkinter as tk
 import threading
 import queue
 import logging
+import time
 import webbrowser
 import zipfile
 from setup_downloads import install_adb, ensure_winget

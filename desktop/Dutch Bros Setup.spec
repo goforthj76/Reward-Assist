@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['C:/Users/gofor/Documents/Codex/2026-08-06/wh/outputs/rewards_assistant/../dutch_bros_signup_assistant.py'],
+    ['C:/Users/gofor/Documents/Codex/2026-10-07/i-x20/work/Reward-Assist/desktop/dutch_bros_signup_assistant.py'],
     pathex=[],
     binaries=[],
     datas=[],
