@@ -1,13 +1,16 @@
 # Reward Assist
 
-Reward Assist combines a mobile-friendly account and rewards dashboard with a Windows companion for guided Android setup through ADB.
+Reward Assist brings account details, reward QR cards and birthday reminders together with a native iPhone wallet and a Windows companion for supported website and Android setup.
+
+**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.41)
 
 ## Repository layout
 
-- The root contains the published landing/mobile web app and current Windows downloads.
+- The root contains the published download website and web wallet.
 - `desktop/` contains the Windows companion, installer, browser helper, local interface, and build scripts.
-- `Reward-Assist-Setup.exe` is the current Windows installer.
-- `Reward-Assist-Windows.exe` is the current portable Windows companion.
+- `ios/` contains the native iPhone app.
+- `server/` contains the encrypted phone-request relay.
+- Download current binaries from Releases; executable copies in the repository root are legacy builds.
 
 ## Privacy
 
@@ -17,11 +20,33 @@ Local profiles and QR snapshots are intentionally excluded from Git. Optional Ta
 
 Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories, virtual environments, browser downloads, and user data remain untracked.
 
-## Windows v0.5.36
+## Current preview: Windows 0.5.41 / iPhone 0.3.3 (build 6)
 
-[Download installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.36/Reward-Assist-Setup.exe) · [Download portable app](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.36/Reward-Assist-Windows.exe)
+[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.41/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.41/Reward-Assist.ipa)
 
-Close all older Reward Assist windows before installing. This release corrects the version label and disables caching of the local app UI.
+1. Close Reward Assist on Windows and run the installer.
+2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.41**. First-time users should follow the installer's Load unpacked instructions.
+3. Import the direct IPA into your compatible sideloading tool. It is a preview, not an App Store installation.
+4. Sign into the same Reward Assist account on both devices. Enable **Allow phone requests** in the Windows **Phone connection** tab, then choose your computer on iPhone.
+
+Keep the computer awake, online and running Reward Assist. Android workflows also need an authorized, connected Android device. Remote power-on is not included.
+
+### New in this preview
+
+- Activity now shows recorded computer-task stages and dated account history.
+- iPhone wallet sorts by newest known account creation date; historical unknown dates appear last.
+- New confirmed Nothing Bundt Cakes signups sync a two-hour countdown and optional local reminder. This is a reminder to check availability, not confirmation that a reward was issued.
+- Completed phone tasks sync accounts automatically. Notification delivery still needs testing with your sideloading environment.
+
+### Recovery improvements
+
+- Fixes incorrect page/service version warnings.
+- Adds phone cancellation and **Stop abandoned web tasks and clear queue** on Windows.
+- Preserves completed signup status when Chrome closes. Cancellation does not undo submitted accounts or orders; check previous results before retrying.
+- Attempts to sign out of an existing Nothing Bundt Cakes session before signup.
+- Includes the 7-Eleven logo and its **Set up with Dutch Bot** label.
+
+Validation: 15 Python regression tests and relay checks passed; the iPhone build succeeded. Full restaurant flows still need live testing. See [Terms of Use](https://goforthj76.github.io/Reward-Assist/terms.html).
 
 ### Nothing Bundt Cakes website signup
 
