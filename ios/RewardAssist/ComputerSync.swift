@@ -198,7 +198,9 @@ enum WakeOnLAN {
             targets.append("255.255.255.255")
         }
         let commonSubnets = [
-            "192.168.4.255", // eero default (user network)
+            "192.168.7.255", // eero /22 subnet broadcast (user's exact eero network!)
+            "192.168.4.255", // alternative eero /24 broadcast
+            "192.168.4.155", // user's PC LAN IP (direct unicast for Tailscale)
             "192.168.1.255", // standard router / Frontier default
             "192.168.0.255", // standard home router
             "192.168.2.255",
@@ -213,7 +215,7 @@ enum WakeOnLAN {
     }
 
     @discardableResult
-    static func send(mac: String, ports: [UInt16] = [9, 7]) -> (Bool, String) {
+    static func send(mac: String, targetIP: String = "", ports: [UInt16] = [9, 7]) -> (Bool, String) {
         let clean = mac.uppercased().replacingOccurrences(of: "[^0-9A-F]", with: "", options: .regularExpression)
         guard clean.count == 12 else {
             return (false, "Enter a valid 12-digit MAC address (e.g. 34:5A:60:BA:70:7C).")
@@ -233,7 +235,11 @@ enum WakeOnLAN {
             packet.append(contentsOf: macBytes)
         }
 
-        let targets = discoverBroadcastAddresses()
+        var targets = discoverBroadcastAddresses()
+        let cleanIP = targetIP.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanIP.isEmpty && !targets.contains(cleanIP) {
+            targets.insert(cleanIP, at: 0)
+        }
         var successCount = 0
         var lastError: String? = nil
         let IP_ONESBCAST: Int32 = 23
@@ -286,6 +292,7 @@ struct ComputerSyncView: View {
     @State private var email = ""
     @State private var password = ""
     @AppStorage("remoteWakeMac") private var wakeMac = ""
+    @AppStorage("remoteWakeIP") private var wakeIP = ""
     @State private var wakeStatus = ""
     var body: some View {
         Form {
@@ -304,12 +311,15 @@ struct ComputerSyncView: View {
             }
             if sync.connected { Section { NavigationLink("Start a computer task") { RemoteTasksView(sync: sync) } } }
             Section("Remote computer wake (Wake-on-LAN)") {
-                Text("Wake your sleeping Windows PC over your local Wi-Fi without needing to keep it running 24/7.")
+                Text("Wake your sleeping Windows PC over your local Wi-Fi or Tailscale without needing to keep it running 24/7.")
                 TextField("PC MAC address (from Windows app)", text:$wakeMac)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                TextField("PC Local IP (optional, e.g. 192.168.4.155 for Tailscale)", text:$wakeIP)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                 Button(action: {
-                    let (_, msg) = WakeOnLAN.send(mac: wakeMac)
+                    let (_, msg) = WakeOnLAN.send(mac: wakeMac, targetIP: wakeIP)
                     wakeStatus = msg
                 }) {
                     Label("Wake computer now", systemImage:"bolt.fill")

@@ -25,6 +25,7 @@ struct RemoteTasksView: View {
     @State private var cardPIN = ""
     @State private var acceptedReviews: Set<String> = []
     @AppStorage("remoteWakeMac") private var wakeMac = ""
+    @AppStorage("remoteWakeIP") private var wakeIP = ""
     @State private var wakeStatus = ""
     struct RemoteJob: Identifiable {
         let id: String
@@ -46,7 +47,7 @@ struct RemoteTasksView: View {
                         .autocorrectionDisabled()
                         .font(.footnote)
                     Button(action: {
-                        let (_, msg) = WakeOnLAN.send(mac: wakeMac)
+                        let (_, msg) = WakeOnLAN.send(mac: wakeMac, targetIP: wakeIP)
                         wakeStatus = msg
                     }) {
                         Label("Wake", systemImage:"bolt.fill")
