@@ -197,6 +197,18 @@ enum WakeOnLAN {
         if !targets.contains("255.255.255.255") {
             targets.append("255.255.255.255")
         }
+        let commonSubnets = [
+            "192.168.4.255", // eero default (user network)
+            "192.168.1.255", // standard router / Frontier default
+            "192.168.0.255", // standard home router
+            "192.168.2.255",
+            "10.0.0.255"     // common cable router
+        ]
+        for ip in commonSubnets {
+            if !targets.contains(ip) {
+                targets.append(ip)
+            }
+        }
         return targets
     }
 
