@@ -209,12 +209,25 @@ class SetupWindow:
                     return
             if self.install_missing.get() and (not find_chrome() or not find_adb()):
                 raise RuntimeError("Chrome or ADB could not be found after installation. Restart Windows, then run setup again.")
-            self.status.set("Installing Reward Assist…")
+            self.status.set("Clearing previous build and installing Reward Assist…")
             self.root.update_idletasks()
+            for proc_name in ["Reward Assist.exe", "Rewards Assistant.exe", "Dutch Bros Setup.exe"]:
+                try:
+                    subprocess.run(["taskkill", "/F", "/T", "/IM", proc_name], capture_output=True, timeout=5)
+                except Exception:
+                    pass
+            time.sleep(0.5)
             source = bundled("Rewards Assistant.exe")
             if not source.is_file():
                 raise FileNotFoundError("The packaged Reward Assist application is missing.")
             INSTALL_ROOT.mkdir(parents=True, exist_ok=True)
+            if EXTENSION_ROOT.exists():
+                shutil.rmtree(EXTENSION_ROOT, ignore_errors=True)
+            if APP_EXE.exists():
+                try:
+                    APP_EXE.unlink(missing_ok=True)
+                except Exception:
+                    pass
             shutil.copy2(source, APP_EXE)
             extension_source = bundled("chrome_extension")
             if not extension_source.is_dir() or not (extension_source / "manifest.json").is_file():
