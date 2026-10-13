@@ -102,6 +102,7 @@ class SetupWindow:
         self.root.resizable(True, True)
         self.root.configure(bg="#07152f")
         self.desktop = tk.BooleanVar(value=True)
+        self.autostart = tk.BooleanVar(value=True)
         self.launch = tk.BooleanVar(value=True)
         self.install_missing = tk.BooleanVar(value=True)
         self.status = tk.StringVar(value="Ready to install")
@@ -143,6 +144,8 @@ class SetupWindow:
         tk.Button(card, text="Android tools license and download terms", relief="flat", command=lambda: webbrowser.open("https://developer.android.com/tools/releases/platform-tools")).pack(anchor="w")
         tk.Label(card, text="Installing missing tools accepts their installation agreements. Internet required.", bg="white", fg="#5f6d83", wraplength=540).pack(anchor="w")
         tk.Checkbutton(card, text="Create a desktop shortcut", variable=self.desktop, bg="white",
+                       activebackground="white", fg="#10213d", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Checkbutton(card, text="Start Reward Assist automatically when Windows starts", variable=self.autostart, bg="white",
                        activebackground="white", fg="#10213d", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
         tk.Checkbutton(card, text="Open Reward Assist after the setup guide", variable=self.launch, bg="white",
                        activebackground="white", fg="#10213d", font=("Segoe UI", 10)).pack(anchor="w")
@@ -249,6 +252,16 @@ class SetupWindow:
                 make_shortcut(desktop_link, APP_EXE)
                 if not desktop_link.is_file():
                     raise RuntimeError(f"Windows did not create the desktop shortcut at {desktop_link}.")
+            startup_folder = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs/Startup"
+            startup_folder.mkdir(parents=True, exist_ok=True)
+            startup_link = startup_folder / "Reward Assist.lnk"
+            if self.autostart.get():
+                make_shortcut(startup_link, APP_EXE)
+            elif startup_link.is_file():
+                try:
+                    startup_link.unlink(missing_ok=True)
+                except Exception:
+                    pass
             (INSTALL_ROOT / "SETUP-GUIDE.txt").write_text(
                 "Reward Assist setup\n\nChrome extension\nOpen chrome://extensions in Chrome. Enable Developer mode, click Load unpacked, and select:\n"
                 + str(EXTENSION_ROOT)
