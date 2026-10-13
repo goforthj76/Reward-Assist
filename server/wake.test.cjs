@@ -1,0 +1,37 @@
+const {DatabaseSync}=require('node:sqlite');
+const {readFileSync}=require('node:fs');
+const {runInNewContext}=require('node:vm');
+const {webcrypto}=require('node:crypto');
+const assert=require('node:assert/strict');
+const sql=new DatabaseSync(':memory:');
+const DB={prepare(query){let args=[];return {bind(...v){args=v;return this},async run(){return sql.prepare(query).run(...args)},async first(){return sql.prepare(query).get(...args)},async all(){return {results:sql.prepare(query).all(...args)}}}}};
+let now=1000000;class Clock extends Date{static now(){return now}}
+const wake=runInNewContext(readFileSync(__dirname+'/wake.js','utf8')+';wake',{Date:Clock,JSON,Uint8Array,TextEncoder,crypto:webcrypto,res:(value,status)=>({value,status}),body:async q=>q.data});
+const device='11111111-1111-4111-8111-111111111111';
+const call=(path,data={},uid='owner',token='',method='POST')=>wake({method,data,headers:new Headers({Authorization:'Bearer '+token})},{DB},{pathname:path},{},uid);
+(async()=>{
+ sql.exec('CREATE TABLE remote_devices(user_id TEXT,id TEXT)');sql.prepare('INSERT INTO remote_devices VALUES(?,?)').run('owner',device);
+ assert.equal((await call('/api/remote/wake/register',{device},'stranger')).status,409);
+ const paired=await call('/api/remote/wake/register',{device});assert.equal(paired.status,201);
+ const {id:relay,token}=paired.value;
+ assert(!sql.prepare('SELECT token_hash FROM wake_relays').get().token_hash.includes(token));
+ const request={relay,id:webcrypto.randomUUID()};
+ assert.equal((await call('/api/remote/wake/request',request)).status,409);
+ assert.equal((await call('/api/wake/tablet/poll',{},null,'wrong')).status,401);
+ assert.equal((await call('/api/wake/tablet/poll',{},null,token)).value.request,null);
+ assert.equal((await call('/api/remote/wake/request',request,'stranger')).status,404);
+ assert.equal((await call('/api/remote/wake/request',request)).status,201);
+ assert.equal((await call('/api/remote/wake/request',request)).status,200);
+ assert.equal((await call('/api/wake/tablet/poll',{},null,token)).value.request,request.id);
+ assert.equal((await call('/api/wake/tablet/poll',{},null,token)).value.request,null);
+ assert.equal((await call('/api/remote/wake/register',{device},null,token)).status,401,'tablet capability cannot enroll');
+ assert.equal((await call('/api/wake/tablet/ack',{id:request.id,result:'online'},null,token)).status,400,'tablet cannot claim PC online');
+ await call('/api/wake/tablet/ack',{id:request.id,result:'sent'},null,token);
+ const list=await call('/api/remote/wake',{},'owner','','GET');assert.equal(list.value.relays[0].result,'sent');assert(!JSON.stringify(list).includes(token));
+ assert.equal((await call('/api/remote/wake/request',{relay,id:webcrypto.randomUUID()})).status,429);
+ now+=31000;await call('/api/remote/wake/request',{relay,id:webcrypto.randomUUID()});now+=121000;
+ assert.equal((await call('/api/wake/tablet/poll',{},null,token)).value.request,null,'stale request never sent');
+ await call('/api/remote/wake/revoke',{relay},'stranger');assert.equal((await call('/api/wake/tablet/poll',{},null,token)).status,200);
+ await call('/api/remote/wake/revoke',{relay});assert.equal((await call('/api/wake/tablet/poll',{},null,token)).status,401);
+ console.log('PASS: ownership, scoped tokens, offline rejection, at-most-once delivery, expiry, rate limit and revocation');
+})().catch(e=>{console.error(e);process.exit(1)});

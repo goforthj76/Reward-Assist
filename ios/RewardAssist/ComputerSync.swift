@@ -128,6 +128,10 @@ private enum SyncFailure: LocalizedError {
         guard let sessionToken else { throw SyncFailure.message("Sign in first.") }
         return try await request("/api/remote", token: sessionToken)
     }
+    func wakeRequest(_ action: String = "", content: [String:Any]? = nil) async throws -> [String:Any] {
+        guard let sessionToken else { throw SyncFailure.message("Sign in first.") }
+        return try await request("/api/remote/wake" + (action.isEmpty ? "" : "/" + action), token:sessionToken, body:content)
+    }
     func remoteDetails(_ payload: String) throws -> [String:Any] {
         guard let key=sessionKey,
               let envelope=try JSONSerialization.jsonObject(with:Data(payload.utf8)) as? [String:Any],

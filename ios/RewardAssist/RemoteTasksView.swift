@@ -35,8 +35,14 @@ struct RemoteTasksView: View {
     }
     var body: some View {
         Form {
+            Section {
+                NavigationLink { WakeRelayView(sync:sync) } label: {
+                    Label("Wake from anywhere", systemImage:"bolt.horizontal.circle.fill")
+                }
+                Text("Use a paired Android tablet at home to wake your sleeping computer over cellular.").font(.footnote).foregroundStyle(.secondary)
+            }
             Section("Home computer") {
-                if devices.isEmpty { Text("No computer online. If your computer is in Sleep mode, tap Wake below (Ethernet required).").font(.footnote) }
+                if devices.isEmpty { Text("No computer online. Use Wake from anywhere with a paired tablet, or the local Wake button while on home Wi-Fi.").font(.footnote) }
                 Picker("Computer", selection:$device) {
                     Text("Choose computer").tag("")
                     ForEach(devices,id: \.self) { Text("Computer " + $0.prefix(8)).tag($0) }
