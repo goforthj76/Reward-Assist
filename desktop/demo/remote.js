@@ -17,8 +17,9 @@
   const toggle=panel.querySelector('input'),status=panel.querySelector('small');
   toggle.onchange=()=>{enabled=toggle.checked;status.textContent=enabled?'Connecting…':'New requests paused. An already-started task may continue.';tick()};
   const call=(action,body={})=>cloudApi('/api/remote/'+action,{method:'POST',body:JSON.stringify({device,...body})});
-  const allowed=new Set(['Nothing Bundt Cakes','The Cheesecake Factory','Taco Bell','Dutch Bros']);
   const recovery=document.createElement('button');recovery.textContent='Stop abandoned web tasks and clear queue';recovery.type='button';recovery.className='secondary';panel.querySelector('.phone-control').append(recovery);
+  const configBtn=document.createElement('button');configBtn.textContent='⚡ Configure Android for sleep & automation';configBtn.type='button';configBtn.className='secondary';configBtn.style.marginTop='6px';panel.querySelector('.phone-control').append(configBtn);
+  configBtn.onclick=async()=>{status.textContent='Configuring connected Android phone…';try{const res=await api('/api/system/configure-android',{method:'POST'});status.textContent=res.message||'Android configured!';}catch(e){status.textContent='Could not configure Android: '+e.message}};
   async function stopWeb(){for(const app of ['Nothing Bundt Cakes','The Cheesecake Factory','Taco Bell',"Wendy's"])await api('/api/web/cancel',{method:'POST',body:JSON.stringify({app})})}
   recovery.onclick=async()=>{
     if(busy){status.textContent='Wait for the current step to finish.';return}

@@ -290,6 +290,19 @@ def adb_sleep_device(serial: str = "") -> bool:
         return False
 
 
+def configure_android_device(serial: str = "") -> dict[str, Any]:
+    adb = find_adb()
+    if not adb:
+        return {"ok": False, "message": "Android ADB tool not found."}
+    try:
+        run_hidden(adb_target(adb, serial, "shell", "settings", "put", "global", "stay_on_while_plugged_in", "0"), timeout=5)
+        run_hidden(adb_target(adb, serial, "shell", "settings", "put", "system", "screen_off_timeout", "60000"), timeout=5)
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"), timeout=5)
+        return {"ok": True, "message": "Android device configured: Stay awake disabled, screen timeout set to 1 minute, and screen put to sleep."}
+    except Exception as exc:
+        return {"ok": False, "message": f"Could not configure Android: {exc}"}
+
+
 def get_primary_mac_address() -> str:
     try:
         cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
@@ -1044,6 +1057,10 @@ class Handler(SimpleHTTPRequestHandler):
             if self.path == "/api/system/sleep-android":
                 serial = str(payload.get("device_serial", "")).strip()
                 self.send_json(200, {"ok": adb_sleep_device(serial)})
+                return
+            if self.path == "/api/system/configure-android":
+                serial = str(payload.get("device_serial", "")).strip()
+                self.send_json(200, configure_android_device(serial))
                 return
             if self.path == "/api/profile/custom":
                 label = str(payload.get("label", "")).strip()
