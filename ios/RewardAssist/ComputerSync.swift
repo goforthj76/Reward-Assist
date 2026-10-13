@@ -306,7 +306,20 @@ struct ComputerSyncView: View {
                 if !wakeStatus.isEmpty {
                     Text(wakeStatus).font(.footnote).foregroundStyle(.secondary)
                 }
-                Text("Note: Your PC must be in Sleep mode and connected to your home router by Ethernet.").font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("How to enable Remote Wake (Ethernet & Wi-Fi)") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("• BIOS (Required for all PCs):").font(.caption.bold())
+                        Text("Restart PC, tap Del or F2. In Advanced → Wake Up Event Setup, set Resume By PCI-E Device to Enabled and ErP Ready to Disabled.").font(.caption2).foregroundStyle(.secondary)
+                        Text("• If on Ethernet:").font(.caption.bold())
+                        Text("In Device Manager → LAN adapter → Advanced, set WOL & Shutdown Link Speed to 100 Mbps First (or Not Speed Down) and Green Ethernet to Disabled.").font(.caption2).foregroundStyle(.secondary)
+                        Text("• If on Wi-Fi (WoWLAN):").font(.caption.bold())
+                        Text("In Device Manager → Wi-Fi adapter → Power Management, check Allow this device to wake the computer. In Advanced, enable Wake on Magic Packet & WoWLAN. Disable Windows Fast Startup.").font(.caption2).foregroundStyle(.secondary)
+                        Text("• Seamless Tasks (Skip Password on Wake):").font(.caption.bold())
+                        Text("In Windows Settings → Accounts → Sign-in options, set 'Require sign-in when away' to Never so requested tasks run immediately upon waking.").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .font(.footnote)
             }
             Section("What sync includes") {
                 Text("New accounts, passwords, notes and QR images. Existing entries are preserved; edits, deletions and reminder dates are currently local to this phone. Use one Reward Assist account for this wallet.")
