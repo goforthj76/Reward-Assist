@@ -3,8 +3,10 @@ import UserNotifications
 
 @main
 struct RewardAssistApp: App {
+    init() { UNUserNotificationCenter.current().delegate = RewardNotificationDelegate.shared }
     @StateObject private var wallet = WalletStore()
-    var body: some Scene { WindowGroup { PrivacyGate { TermsGate() }.environmentObject(wallet) } }
+    @StateObject private var activity = ActivityStore()
+    var body: some Scene { WindowGroup { PrivacyGate { TermsGate() }.environmentObject(wallet).environmentObject(activity) } }
 }
 
 struct RootView: View {
@@ -12,10 +14,7 @@ struct RootView: View {
         TabView {
             NavigationStack { DashboardView() }.tabItem { Label("Home", systemImage: "house.fill") }
             NavigationStack { NativeWalletView() }.tabItem { Label("Wallet", systemImage: "wallet.pass.fill") }
-            NavigationStack {
-                ContentUnavailableView("No activity yet", systemImage: "clock.arrow.circlepath", description: Text("Open Computer to view recent requests and their progress."))
-                    .navigationTitle("Activity")
-            }.tabItem { Label("Activity", systemImage: "clock") }
+            NavigationStack { ActivityView() }.tabItem { Label("Activity", systemImage: "clock") }
             NavigationStack { ComputerSyncView() }.tabItem { Label("Computer", systemImage: "desktopcomputer") }
         }.tint(.teal)
     }
@@ -81,3 +80,9 @@ struct ComputerView: View {
 }
 
 
+final class RewardNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = RewardNotificationDelegate()
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner,.sound])
+    }
+}

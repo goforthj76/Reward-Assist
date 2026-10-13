@@ -92,15 +92,21 @@ private enum SyncFailure: LocalizedError {
             for account in accounts {
                 guard let program = (account["program"] ?? account["app"]) as? String, !program.isEmpty else { continue }
                 let address = account["email"] as? String ?? ""
-                if cards.contains(where: { $0.name == program && $0.email.lowercased() == address.lowercased() }) { continue }
+                let created = RewardDates.parse(account["createdAt"])
+                let ready = RewardDates.parse(account["rewardCheckAt"])
+                if let index=cards.firstIndex(where: { $0.name == program && $0.email.lowercased() == address.lowercased() }) {
+                    if cards[index].createdAt == nil { cards[index].createdAt=created }
+                    if cards[index].rewardCheckAt == nil { cards[index].rewardCheckAt=ready }
+                    continue
+                }
                 var qr: Data?
                 if let text = account["qr"] as? String, text.hasPrefix("data:image/"), let comma = text.firstIndex(of: ",") { qr = Data(base64Encoded: String(text[text.index(after: comma)...])) }
-                cards.append(RewardCard(name: program, email: address, memberID: account["phone"] as? String ?? "", notes: account["notes"] as? String ?? "", password: account["password"] as? String, qr: qr))
+                cards.append(RewardCard(name: program, email: address, memberID: account["phone"] as? String ?? "", notes: account["notes"] as? String ?? "", password: account["password"] as? String, qr: qr, createdAt:created, rewardCheckAt:ready))
                 imported += 1
             }
             var uploaded = 0
             for card in wallet.cards where !accounts.contains(where: { (($0["program"] ?? $0["app"]) as? String) == card.name && ($0["email"] as? String ?? "").lowercased() == card.email.lowercased() }) {
-                accounts.append(["program":card.name,"email":card.email,"password":card.password ?? "","notes":card.notes,"qr":card.qr.map { "data:image/png;base64," + $0.base64EncodedString() } ?? ""])
+                accounts.append(["createdAt":card.createdAt.map { ISO8601DateFormatter().string(from:$0) } ?? "","rewardCheckAt":card.rewardCheckAt.map { ISO8601DateFormatter().string(from:$0) } ?? "","program":card.name,"email":card.email,"password":card.password ?? "","notes":card.notes,"qr":card.qr.map { "data:image/png;base64," + $0.base64EncodedString() } ?? ""])
                 uploaded += 1
             }
             if uploaded > 0 {
@@ -111,6 +117,7 @@ private enum SyncFailure: LocalizedError {
                 _ = try await request("/api/vault", token: token, body:["payload":payload,"expected_version":vault?["version"] as? Int ?? 0], method:"PUT")
             }
             guard wallet.save(cards) else { throw SyncFailure.message("Cloud connection succeeded, but the iPhone wallet could not be saved. Please retry.") }
+            await wallet.scheduleBundtReminders(requestPermission:true)
             try remember(email:email,token:token,key:key)
             sessionToken=token; sessionKey=key; connected=true
             status = "Sync complete: \(imported) downloaded, \(uploaded) uploaded. Existing entries were preserved."
@@ -182,4 +189,3 @@ struct ComputerSyncView: View {
         }.navigationTitle("Computer sync")
     }
 }
-

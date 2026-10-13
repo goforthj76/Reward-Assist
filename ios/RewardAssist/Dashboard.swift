@@ -75,6 +75,7 @@ struct DashboardView: View {
         do {
             let center=UNUserNotificationCenter.current()
             guard try await center.requestAuthorization(options:[.alert,.sound]) else {notice="Allow notifications in Settings. In LiveContainer, enable Fix Local Notifications for this app.";return}
+            await wallet.scheduleBundtReminders(requestPermission:false)
             let pending=await center.pendingNotificationRequests()
             center.removePendingNotificationRequests(withIdentifiers:pending.filter{$0.identifier.hasPrefix("expiry-")}.map(\.identifier))
             var count=0
@@ -120,4 +121,3 @@ struct BirthdayCalendar: View {
         }.navigationTitle("Birthdays")
     }
 }
-

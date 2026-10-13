@@ -2,6 +2,9 @@ import SwiftUI
 
 struct RemoteTasksView: View {
     @ObservedObject var sync: ComputerSync
+    @EnvironmentObject var activity: ActivityStore
+    @EnvironmentObject var wallet: WalletStore
+    @State private var syncedCompletions: Set<String> = []
     @State private var devices: [String] = []
     @State private var jobs: [RemoteJob] = []
     @State private var device = ""
@@ -41,6 +44,7 @@ struct RemoteTasksView: View {
                     ForEach(["Nothing Bundt Cakes","The Cheesecake Factory","Taco Bell","Dutch Bros"],id: \.self) { Text($0) }
                 }
                 Text("Paste the same single-person details block used on the desktop. Dutch Bros needs an attached Android device. Taco Bell continues on the connected Android. Payment setup or unexpected device prompts may need attention there.").font(.footnote)
+                if app == "Nothing Bundt Cakes" { Text("Allow about 2 hours after confirmed signup before checking the reward. Sync your wallet after completion to start its countdown and local reminder.").font(.footnote).foregroundStyle(.secondary) }
                 TextEditor(text:$details).frame(minHeight:140).textInputAutocapitalization(.never).autocorrectionDisabled()
                 if app == "Taco Bell" {
                     TextField("Pickup address or ZIP",text:$location)
@@ -104,7 +108,13 @@ struct RemoteTasksView: View {
             jobs = (result["jobs"] as? [[String:Any]] ?? []).compactMap {
                 guard let id=$0["id"] as? String, let device=$0["device"] as? String, let stage=$0["stage"] as? String else { return nil }
                 let info = ($0["payload"] as? String).flatMap { try? sync.remoteDetails($0) } ?? [:]
+                activity.record(id:id,program:info["app"] as? String,stage:stage,date:Date(timeIntervalSince1970:($0["updated"] as? Double ?? Date().timeIntervalSince1970 * 1000) / 1000))
                 return RemoteJob(id:id,device:device,stage:stage,info:info)
+            }
+            let completed=jobs.filter { $0.stage == "complete" && !syncedCompletions.contains($0.id) }
+            if !completed.isEmpty && !sync.busy {
+                await sync.sync(email:sync.accountEmail,password:"",wallet:wallet)
+                if sync.status.hasPrefix("Sync complete:") { syncedCompletions.formUnion(completed.map(\.id)) }
             }
         } catch { message = error.localizedDescription }
     }
@@ -152,4 +162,3 @@ struct RemoteTasksView: View {
         busy = false
     }
 }
-

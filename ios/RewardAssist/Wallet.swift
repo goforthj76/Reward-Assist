@@ -17,6 +17,8 @@ struct RewardCard: Codable, Identifiable {
     var usedAt: Date?
     var expiresAt: Date?
     var birthday: Date?
+    var createdAt: Date? = nil
+    var rewardCheckAt: Date? = nil
 }
 
 @MainActor final class WalletStore: ObservableObject {
@@ -56,7 +58,7 @@ struct RewardCard: Codable, Identifiable {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to:file, options:[.atomic, .completeFileProtection])
             let removed = Set(cards.map(\.id)).subtracting(updated.map(\.id))
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: removed.map { "expiry-\($0)" })
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: removed.flatMap { ["expiry-\($0)", "bundt-\($0)"] })
             cards = updated
             return true
         } catch { self.error = "Your change could not be saved. Please try again."; return false }
@@ -71,7 +73,10 @@ struct NativeWalletView: View {
     @State private var onlyFavorites = false
     private var visible: [RewardCard] {
         wallet.cards.filter { (!onlyFavorites || $0.favorite) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.email.localizedCaseInsensitiveContains(search)) }
-            .sorted { a,b in a.favorite != b.favorite ? a.favorite : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending }
+            .sorted { a,b in
+                if a.createdAt != b.createdAt { return (a.createdAt ?? .distantPast) > (b.createdAt ?? .distantPast) }
+                return a.id.uuidString < b.id.uuidString
+            }
     }
     var body: some View {
         ScrollView {
@@ -82,6 +87,7 @@ struct NativeWalletView: View {
                     Text("\(wallet.cards.count) saved accounts · on this device").font(.subheadline)
                 }.foregroundStyle(.white).frame(maxWidth:.infinity, alignment:.leading).padding(26)
                     .background(LinearGradient(colors:[Color(red:0.05,green:0.12,blue:0.24), .teal], startPoint:.topLeading,endPoint:.bottomTrailing),in:RoundedRectangle(cornerRadius:28))
+                Text("Newest accounts first · unknown creation dates appear last").font(.caption).foregroundStyle(.secondary)
                 Toggle("Favorites only",isOn:$onlyFavorites).tint(.teal)
                 if visible.isEmpty {
                     ContentUnavailableView(wallet.cards.isEmpty ? "Your first card belongs here" : "No matching cards", systemImage:"qrcode",description:Text("Save an account and import its rewards QR image for quick access."))
@@ -106,6 +112,8 @@ struct CardTile: View {
             Text(String(card.name.prefix(2)).uppercased()).font(.title3.bold()).foregroundStyle(.teal).frame(width:54,height:54).background(.teal.opacity(0.12),in:RoundedRectangle(cornerRadius:18))
             VStack(alignment:.leading,spacing:5) {
                 Text(card.name).font(.headline)
+                if let created=card.createdAt { Text("Created " + created.formatted(date:.abbreviated,time:.omitted)).font(.caption2).foregroundStyle(.secondary) }
+                if let date=card.rewardCheckAt { RewardCountdown(date:date) }
                 Text(card.email.isEmpty ? "Membership & rewards" : card.email).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
@@ -129,6 +137,7 @@ struct AddCardView: View {
     @State private var hasBirthday=false
     @State private var expiry=Date().addingTimeInterval(86400*7)
     @State private var birthday=Date()
+    @State private var createdAt=Date()
     var body: some View {
         Form {
             Section("Account") {
@@ -144,6 +153,7 @@ struct AddCardView: View {
                 Text("Import the original code supplied by the restaurant. Codes may expire or change; confirm it is current before use.").font(.footnote)
             }
             Section("Dates") {
+                DatePicker("Account created",selection:$createdAt,in:...Date(),displayedComponents:[.date,.hourAndMinute])
                 Toggle("Reward expires",isOn:$hasExpiry)
                 if hasExpiry { DatePicker("Expiration",selection:$expiry,displayedComponents:.date) }
                 Toggle("Show birthday in calendar",isOn:$hasBirthday)
@@ -155,7 +165,7 @@ struct AddCardView: View {
             .toolbar {
                 ToolbarItem(placement:.cancellationAction) { Button("Cancel"){dismiss()} }
                 ToolbarItem(placement:.confirmationAction) { Button("Save") {
-                    if wallet.save(wallet.cards + [RewardCard(name:name.trimmingCharacters(in:.whitespacesAndNewlines),email:email,memberID:memberID,notes:notes,password:password.isEmpty ? nil : password,qr:qr,expiresAt:hasExpiry ? expiry : nil,birthday:hasBirthday ? birthday : nil)]) { dismiss() }
+                    if wallet.save(wallet.cards + [RewardCard(name:name.trimmingCharacters(in:.whitespacesAndNewlines),email:email,memberID:memberID,notes:notes,password:password.isEmpty ? nil : password,qr:qr,expiresAt:hasExpiry ? expiry : nil,birthday:hasBirthday ? birthday : nil,createdAt:createdAt,rewardCheckAt:name.localizedCaseInsensitiveContains("nothing bundt") ? createdAt.addingTimeInterval(7200) : nil)]) { Task { await wallet.scheduleBundtReminders(requestPermission:true) }; dismiss() }
                     else { error=wallet.error ?? "Could not save account." }
                 }.disabled(name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || importing) }
             }
@@ -188,6 +198,8 @@ struct CardDetail: View {
                     }
                 }
                 Section("Account details") {
+                    if let date=card.createdAt { LabeledContent("Account created",value:date.formatted(date:.abbreviated,time:.shortened)) }
+                    if let date=card.rewardCheckAt { RewardCountdown(date:date); Text("Allow about 2 hours after signup, then check the official reward. This timer does not confirm issuance or eligibility.").font(.footnote) }
                     if let date=card.expiresAt {LabeledContent("Expires",value:date.formatted(date:.abbreviated,time:.omitted))}
                     if let date=card.birthday {LabeledContent("Birthday",value:date.formatted(.dateTime.month().day()))}
                     if !card.email.isEmpty { LabeledContent("Email",value:card.email).textSelection(.enabled) }
