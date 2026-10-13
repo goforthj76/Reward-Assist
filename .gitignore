@@ -6,4 +6,6 @@ desktop/dist/
 desktop/pw-browsers/
 desktop/user_data/
 *.pyc
-
+outputs/
+website-preview-*.png
+desktop/remote-setup.spec

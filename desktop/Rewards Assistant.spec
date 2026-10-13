@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['C:/Users/gofor/Documents/Codex/2026-08-06/wh/outputs/rewards_assistant/local_app.py'],
+    ['local_app.py'],
     pathex=[],
-    binaries=[('C:/Users/gofor/Documents/Codex/2026-08-06/wh/outputs/rewards_assistant/dist/Dutch Bros Setup.exe', '.')],
-    datas=[('C:/Users/gofor/Documents/Codex/2026-08-06/wh/outputs/rewards_assistant/demo', 'demo'), ('C:/Users/gofor/Documents/Codex/2026-08-06/wh/outputs/rewards_assistant/../reward-assist-site/dist/icon-192.png', 'demo'), ('C:/Users/gofor/Documents/Codex/2026-08-06/wh/outputs/rewards_assistant/chrome_extension', 'chrome_extension')],
+    binaries=[('dist/Dutch Bros Setup.exe', '.')],
+    datas=[('demo', 'demo'), ('../icon-192.png', 'demo'), ('chrome_extension', 'chrome_extension')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['C:/Users/gofor/Documents/Codex/2026-08-06/wh/outputs/rewards_assistant/reward-assist.ico'],
+    icon=['reward-assist.ico'],
 )

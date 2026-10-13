@@ -2,7 +2,7 @@
 
 Reward Assist brings account details, reward QR cards and birthday reminders together with a native iPhone wallet and a Windows companion for supported website and Android setup.
 
-**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.41)
+**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.42)
 
 ## Repository layout
 
@@ -20,23 +20,28 @@ Local profiles and QR snapshots are intentionally excluded from Git. Optional Ta
 
 Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories, virtual environments, browser downloads, and user data remain untracked.
 
-## Current preview: Windows 0.5.41 / iPhone 0.3.3 (build 6)
+## Current preview: Windows 0.5.42 / iPhone 0.3.3 (build 6)
 
-[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.41/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.41/Reward-Assist.ipa)
+[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.42/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.42/Reward-Assist.ipa)
 
 1. Close Reward Assist on Windows and run the installer.
-2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.41**. First-time users should follow the installer's Load unpacked instructions.
+2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.42**. First-time users should follow the installer's Load unpacked instructions.
 3. Import the direct IPA into your compatible sideloading tool. It is a preview, not an App Store installation.
 4. Sign into the same Reward Assist account on both devices. Enable **Allow phone requests** in the Windows **Phone connection** tab, then choose your computer on iPhone.
 
 Keep the computer awake, online and running Reward Assist. Android workflows also need an authorized, connected Android device. Remote power-on is not included.
 
-### New in this preview
+### New in this preview (0.5.42)
 
-- Activity now shows recorded computer-task stages and dated account history.
+- Fixes Nothing Bundt Cakes birthday day selection by waiting for day choices to populate after selecting the month, and validates the full date before submission.
+- Independent Bundtastic Rewards enrollment even when bakery dropdown options take time to load.
+- Automatically resumes signup from login screen after logout if an account was already signed in.
+- Accepts formatted phone numbers on the signup form.
+- Actionable feedback and specific attention reasons (birthday, logout, rewards, fields, validation) when human review is required.
+- Activity shows recorded computer-task stages and dated account history.
 - iPhone wallet sorts by newest known account creation date; historical unknown dates appear last.
-- New confirmed Nothing Bundt Cakes signups sync a two-hour countdown and optional local reminder. This is a reminder to check availability, not confirmation that a reward was issued.
-- Completed phone tasks sync accounts automatically. Notification delivery still needs testing with your sideloading environment.
+- New confirmed Nothing Bundt Cakes signups sync a two-hour countdown and optional local reminder.
+- Completed phone tasks sync accounts automatically.
 
 ### Recovery improvements
 

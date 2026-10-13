@@ -63,7 +63,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.41"
+BUILD_VERSION = "0.5.42"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -1424,6 +1424,15 @@ class Handler(SimpleHTTPRequestHandler):
                                 "filling_details": "Filling Nothing Bundt Cakes details and waiting for bakery choices.",
                                 "attention": "Signup could not be confirmed. Check validation or verification in Chrome. Create Account will not be clicked again automatically."
                             }
+                            if stage == "attention":
+                                reasons = {
+                                    "birthday": "The birthday could not be verified. Use YYYY-MM-DD and check the selected month and day. No account was submitted.",
+                                    "logout": "Could not resume signup after sign-out. Open the Nothing Bundt Cakes Create Account page and start again.",
+                                    "rewards": "Bundtastic Rewards could not be selected. No account was submitted. Check the rewards checkbox in Chrome.",
+                                    "fields": "One or more signup fields or bakery choices could not be verified. No account was submitted. Check the form in Chrome.",
+                                    "validation": "The website has not enabled Create Account or a field needs correction. No account was submitted. Check the form in Chrome.",
+                                }
+                                messages["attention"] = reasons.get(str(payload.get("reason", "")), messages["attention"])
                             if stage == "complete" and not task.get("submitted"):
                                 self.send_json(200, {"ok": True, "ignored": True})
                                 return
@@ -1431,7 +1440,6 @@ class Handler(SimpleHTTPRequestHandler):
                             if stage == "complete":
                                 profile = dict(task.get("profile", {}))
                                 profile.update(id=uuid.uuid4().hex, app=app, label=profile.get("first_name", "Profile"), saved_at=dt.datetime.now().isoformat(timespec="seconds"))
-                                profile["account_created_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
                                 profile["account_created_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
                                 profiles = load_profiles()
                                 if not any(p.get("app") == app and p.get("email", "").casefold() == profile.get("email", "").casefold() for p in profiles):

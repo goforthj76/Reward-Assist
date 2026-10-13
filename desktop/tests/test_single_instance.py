@@ -9,7 +9,7 @@ import local_app
 class InstanceTests(unittest.TestCase):
  def test_second_launch_reuses_existing_server(self):
   error=OSError('occupied');error.winerror=10048
-  with patch.object(local_app,'ExclusiveThreadingHTTPServer',side_effect=error) as server, patch.object(local_app,'urlopen',return_value=io.BytesIO(b'{"local":true,"version":"0.5.34"}')), patch.object(local_app,'open_local_ui') as ui:
+  with patch.object(local_app,'ExclusiveThreadingHTTPServer',side_effect=error) as server, patch.object(local_app,'urlopen',return_value=io.BytesIO(f'{{"local":true,"version":"{local_app.BUILD_VERSION}"}}'.encode())) as url, patch.object(local_app,'open_local_ui') as ui:
    local_app.main()
    self.assertEqual(server.call_count,1)
    ui.assert_called_once()
