@@ -63,6 +63,7 @@
         const stage=s.stage==='complete'?'complete':s.stage==='waiting_code'?'waiting_code':['review_required','ready_for_review'].includes(s.stage)?'review_required':['attention','error','failed','stopped'].includes(s.stage)?'attention':'running';
         if(stage==='review_required' && !active.reviewNonce)active.reviewNonce=crypto.randomUUID();
         const payload=await cloudEncrypt({app:active.app,message:s.message||'',codePhase:s.codePhase||'website',reviewKind:s.reviewKind||'signup',reviewText:s.reviewText||'',nonce:active.reviewNonce||''});
+        if(stage==='complete')await syncWindowsAccounts();
         await call('update',{id:active.id,stage,payload});status.textContent=active.app+' · '+(s.message||stage.replaceAll('_',' '));
         if(stage==='waiting_code'){
           const {payload}=await call('take-code',{id:active.id});
@@ -82,7 +83,7 @@
             else throw Error('This step needs attention on the host device.');
           }
         }
-        if(['complete','attention'].includes(stage)){active=null;if(stage==='complete')await syncWindowsAccounts()}
+        if(['complete','attention'].includes(stage)){active=null}
       }
     }catch(error){status.textContent='Connection needs attention: '+error.message;if(active){active.state={stage:'attention',message:error.message};try{await call('update',{id:active.id,stage:'attention',payload:await cloudEncrypt({app:active.app,message:error.message})});active=null}catch{}}}
     finally{busy=false}
