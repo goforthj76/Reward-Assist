@@ -845,6 +845,19 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed_url.path == "/api/extension/task":
             WEB_LAST_SEEN[app] = time.monotonic()
         if parsed_url.path == "/api/web/status" and app in WEB_LAST_SEEN and time.monotonic()-WEB_LAST_SEEN[app] > 60:
+            if app == "Nothing Bundt Cakes":
+                with BUNDT_LOCK:
+                    previous = dict(BUNDT_SESSION.get("status", {}))
+            elif app == "The Cheesecake Factory":
+                previous = dict(CHEESECAKE.status)
+            else:
+                slug = re.sub(r"[^A-Za-z]+", "-", app).strip("-").lower()
+                status_path = WEB_SESSION_ROOT / slug / "status.json"
+                previous = json.loads(status_path.read_text(encoding="utf-8")) if status_path.exists() else {}
+            if previous.get("stage") in {"complete", "idle", "attention", "error", "failed", "stopped"}:
+                WEB_LAST_SEEN.pop(app, None)
+                self.send_json(200, previous)
+                return
             stop_web_task(app)
             self.send_json(200, {"stage":"attention", "message":"Chrome stopped responding or its tab was closed. This task was stopped, not retried. Check whether signup completed before starting another request."})
             return
@@ -1598,4 +1611,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
