@@ -30,6 +30,24 @@ class HouseholdApiTests(unittest.TestCase):
         self.app.Handler.do_POST(handler)
         return handler.send_json.call_args.args
 
+    def test_closed_tab_does_not_erase_completed_signup(self):
+        (self.session / 'status.json').write_text(json.dumps({'stage': 'complete', 'message': 'Created'}))
+        self.app.WEB_LAST_SEEN['Taco Bell'] = self.app.time.monotonic() - 90
+        handler = Mock(path='/api/web/status?app=Taco%20Bell')
+        with patch.object(self.app, 'stop_web_task') as stop:
+            self.app.Handler.do_GET(handler)
+        stop.assert_not_called()
+        self.assertEqual(handler.send_json.call_args.args[1]['stage'], 'complete')
+
+    def test_closed_tab_stops_pending_web_task(self):
+        (self.session / 'status.json').write_text(json.dumps({'stage': 'waiting_code'}))
+        self.app.WEB_LAST_SEEN['Taco Bell'] = self.app.time.monotonic() - 90
+        handler = Mock(path='/api/web/status?app=Taco%20Bell')
+        with patch.object(self.app, 'stop_web_task') as stop:
+            self.app.Handler.do_GET(handler)
+        stop.assert_called_once_with('Taco Bell')
+        self.assertEqual(handler.send_json.call_args.args[1]['stage'], 'attention')
+
     def test_relay_failure_still_opens_chrome_with_manual_verification(self):
         with patch.object(self.app, 'find_chrome', return_value=Path('chrome.exe')), \
              patch.object(self.app, 'find_browser_helper', return_value=None), \
