@@ -1,4 +1,6 @@
 import SwiftUI
+import CoreImage.CIFilterBuiltins
+import UIKit
 
 struct WakeRelayView: View {
     @ObservedObject var sync: ComputerSync
@@ -11,6 +13,8 @@ struct WakeRelayView: View {
     @State private var busy=false
     @State private var waitingFor=""
     @State private var deadline:Date?
+    @State private var removal:Relay?
+    @State private var loaded=false
     var body:some View {
         Form {
             Section {
@@ -18,14 +22,14 @@ struct WakeRelayView: View {
                 Text("Keep your Android tablet on home Wi-Fi, powered on with its screen off. The tablet sends a local wake signal; the PC can sleep between tasks.")
             }
             Section("Paired tablet") {
-                if relays.isEmpty { Text("No tablet paired yet.").foregroundStyle(.secondary) }
+                if relays.isEmpty { Text(loaded ? "No tablet paired yet." : "Checking saved pairing…").foregroundStyle(.secondary) }
                 ForEach(relays) { relay in
                     VStack(alignment:.leading,spacing:10) {
                         Text("Computer " + relay.device.prefix(8)).font(.headline)
                         Label(relay.online ? "Tablet online" : "Tablet offline",systemImage:relay.online ? "checkmark.circle.fill" : "wifi.slash").foregroundStyle(relay.online ? Color.green : Color.secondary)
                         if !relay.result.isEmpty { Text(resultText(relay.result)).font(.footnote) }
-                        Button("Wake computer") { Task { await wake(relay) } }.disabled(busy || !relay.online || !waitingFor.isEmpty)
-                        Button("Remove pairing",role:.destructive) { Task { await remove(relay) } }.disabled(busy)
+                        Button("Wake computer") { Task { await wake(relay) } }.buttonStyle(.borderless).disabled(busy || !relay.online || !waitingFor.isEmpty)
+                        Button("Remove pairing",role:.destructive) { removal=relay }.buttonStyle(.borderless).disabled(busy)
                     }
                 }
                 if !message.isEmpty { Text(message).font(.footnote).accessibilityLabel(message) }
@@ -40,6 +44,11 @@ struct WakeRelayView: View {
                 if !pairingKey.isEmpty {
                     Text("Treat this key as private. It only lets the tablet receive and acknowledge wake requests. It expires after 90 days.").font(.caption)
                     Text(pairingKey).font(.system(.caption,design:.monospaced)).textSelection(.enabled).privacySensitive()
+                    Button("Copy key") { UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic:pairingKey]],options:[.localOnly:true,.expirationDate:Date().addingTimeInterval(300)]) }.buttonStyle(.borderless)
+                    if let image=pairingQR {
+                        Image(uiImage:image).interpolation(.none).resizable().scaledToFit().frame(width:220,height:220).padding(12).background(.white).privacySensitive()
+                        Text("Use the tablet's camera or QR scanner to read this code, copy its text, then paste it into Pairing key. Keep this code private.").font(.caption)
+                    }
                     Button("Hide key") { pairingKey="" }
                 }
             }
@@ -54,6 +63,16 @@ struct WakeRelayView: View {
                 do { try await Task.sleep(for:.seconds(5)) } catch { break }
             }
         }.onDisappear { pairingKey="" }
+        .confirmationDialog("Remove this tablet pairing?",isPresented:Binding(get:{removal != nil},set:{if !$0 {removal=nil}}),titleVisibility:.visible) {
+            Button("Remove pairing",role:.destructive) { if let relay=removal { Task { await remove(relay) } };removal=nil }
+            Button("Cancel",role:.cancel) {removal=nil}
+        } message: { Text("Remote waking will stop until you pair the tablet again.") }
+    }
+    private var pairingQR:UIImage? {
+        guard !pairingKey.isEmpty else{return nil}
+        let filter=CIFilter.qrCodeGenerator();filter.message=Data(pairingKey.utf8)
+        guard let output=filter.outputImage,let cg=CIContext().createCGImage(output.transformed(by:CGAffineTransform(scaleX:6,y:6)),from:output.extent.applying(CGAffineTransform(scaleX:6,y:6))) else{return nil}
+        return UIImage(cgImage:cg)
     }
     private func resultText(_ result:String)->String {
         switch result {
@@ -69,10 +88,12 @@ struct WakeRelayView: View {
         guard !busy else{return}
         do {
             let state=try await sync.wakeRequest()
-            relays=(state["relays"] as? [[String:Any]] ?? []).compactMap { row in
+            guard let rows=state["relays"] as? [[String:Any]] else {throw NSError(domain:"WakeRelay",code:1,userInfo:[NSLocalizedDescriptionKey:"Could not read saved pairing. Try again."])}
+            relays=rows.compactMap { row in
                 guard let id=row["id"] as? String,let device=row["device"] as? String else{return nil}
                 return Relay(id:id,device:device,online:row["online"] as? Bool ?? false,result:row["result"] as? String ?? "")
             }
+            loaded=true
             let remote=try await sync.remoteRead()
             computers=(remote["devices"] as? [[String:Any]] ?? []).compactMap{$0["id"] as? String}
             if !waitingFor.isEmpty {
