@@ -316,6 +316,8 @@ struct ComputerSyncView: View {
                         Text("In Device Manager → Wi-Fi adapter → Power Management, check Allow this device to wake the computer. In Advanced, enable Wake on Magic Packet & WoWLAN. Disable Windows Fast Startup.").font(.caption2).foregroundStyle(.secondary)
                         Text("• Seamless Tasks (Skip Password on Wake):").font(.caption.bold())
                         Text("In Windows Settings → Accounts → Sign-in options, set 'Require sign-in when away' to Never so requested tasks run immediately upon waking.").font(.caption2).foregroundStyle(.secondary)
+                        Text("• Away From Home (Cellular / Outside Wi-Fi):").font(.caption.bold())
+                        Text("To wake your computer from cellular, run Tailscale on an always-on device (Apple TV or connected Android) with Subnet Routing enabled so your iPhone can reach your home network, or use a smart plug with BIOS AC Restore.").font(.caption2).foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
                 }
