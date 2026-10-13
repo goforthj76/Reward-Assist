@@ -2,6 +2,7 @@ import SwiftUI
 import CryptoKit
 import CommonCrypto
 import Security
+import Darwin
 
 private enum SyncFailure: LocalizedError {
     case message(String)
@@ -161,11 +162,64 @@ private enum SyncFailure: LocalizedError {
     }
 }
 
+enum WakeOnLAN {
+    @discardableResult
+    static func send(mac: String, ports: [UInt16] = [9, 7]) -> (Bool, String) {
+        let clean = mac.replacingOccurrences(of: ":", with: "")
+                       .replacingOccurrences(of: "-", with: "")
+                       .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count == 12, clean.range(of: "^[0-9a-fA-F]{12}$", options: .regularExpression) != nil else {
+            return (false, "Enter a valid 12-digit MAC address (e.g. 34:5A:60:BA:70:7C).")
+        }
+        var macBytes = [UInt8]()
+        var index = clean.startIndex
+        while index < clean.endIndex {
+            let nextIndex = clean.index(index, offsetBy: 2)
+            guard let byte = UInt8(clean[index..<nextIndex], radix: 16) else {
+                return (false, "Could not parse MAC address.")
+            }
+            macBytes.append(byte)
+            index = nextIndex
+        }
+        var packet = [UInt8](repeating: 0xFF, count: 6)
+        for _ in 0..<16 {
+            packet.append(contentsOf: macBytes)
+        }
+        var anySuccess = false
+        for port in ports {
+            let sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+            if sock < 0 { continue }
+            var broadcast: Int32 = 1
+            setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, socklen_t(MemoryLayout<Int32>.size))
+            var addr = sockaddr_in()
+            addr.sin_family = sa_family_t(AF_INET)
+            addr.sin_port = port.bigEndian
+            addr.sin_addr.s_addr = inet_addr("255.255.255.255")
+            let sent = packet.withUnsafeBytes { buffer in
+                withUnsafePointer(to: &addr) { addrPtr in
+                    addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                        sendto(sock, buffer.baseAddress, buffer.count, 0, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
+                }
+            }
+            close(sock)
+            if sent == packet.count { anySuccess = true }
+        }
+        if anySuccess {
+            return (true, "Wake signal sent! Allow 5–10 seconds for your computer to wake from sleep.")
+        } else {
+            return (false, "Could not broadcast wake packet on the local Wi-Fi network.")
+        }
+    }
+}
+
 struct ComputerSyncView: View {
     @EnvironmentObject var wallet: WalletStore
     @StateObject private var sync = ComputerSync()
     @State private var email = ""
     @State private var password = ""
+    @AppStorage("remoteWakeMac") private var wakeMac = ""
+    @State private var wakeStatus = ""
     var body: some View {
         Form {
             Section {
@@ -182,6 +236,23 @@ struct ComputerSyncView: View {
                 Text(sync.status).font(.footnote)
             }
             if sync.connected { Section { NavigationLink("Start a computer task") { RemoteTasksView(sync: sync) } } }
+            Section("Remote computer wake (Wake-on-LAN)") {
+                Text("Wake your sleeping Windows PC over your local Wi-Fi without needing to keep it running 24/7.")
+                TextField("PC MAC address (from Windows app)", text:$wakeMac)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(action: {
+                    let (_, msg) = WakeOnLAN.send(mac: wakeMac)
+                    wakeStatus = msg
+                }) {
+                    Label("Wake computer now", systemImage:"bolt.fill")
+                }
+                .disabled(wakeMac.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if !wakeStatus.isEmpty {
+                    Text(wakeStatus).font(.footnote).foregroundStyle(.secondary)
+                }
+                Text("Note: Your PC must be in Sleep mode and connected to your home router by Ethernet.").font(.caption).foregroundStyle(.secondary)
+            }
             Section("What sync includes") {
                 Text("New accounts, passwords, notes and QR images. Existing entries are preserved; edits, deletions and reminder dates are currently local to this phone. Use one Reward Assist account for this wallet.")
                 Text("Sign in on the desktop first so it uploads its accounts. Uploaded phone accounts are available in the cloud web wallet. Enable Phone requests on your updated desktop to start a remote setup task.")

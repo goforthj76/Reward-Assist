@@ -2,7 +2,7 @@
 
 Reward Assist brings account details, reward QR cards and birthday reminders together with a native iPhone wallet and a Windows companion for supported website and Android setup.
 
-**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.42)
+**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.43)
 
 ## Repository layout
 
@@ -20,18 +20,22 @@ Local profiles and QR snapshots are intentionally excluded from Git. Optional Ta
 
 Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories, virtual environments, browser downloads, and user data remain untracked.
 
-## Current preview: Windows 0.5.42 / iPhone 0.3.3 (build 6)
+## Current preview: Windows 0.5.43 / iPhone 0.3.4 (build 7)
 
-[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.42/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.42/Reward-Assist.ipa)
+[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.43/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.43/Reward-Assist.ipa)
 
 1. Close Reward Assist on Windows and run the installer.
-2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.42**. First-time users should follow the installer's Load unpacked instructions.
+2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.43**. First-time users should follow the installer's Load unpacked instructions.
 3. Import the direct IPA into your compatible sideloading tool. It is a preview, not an App Store installation.
 4. Sign into the same Reward Assist account on both devices. Enable **Allow phone requests** in the Windows **Phone connection** tab, then choose your computer on iPhone.
 
-Keep the computer awake, online and running Reward Assist. Android workflows also need an authorized, connected Android device. Remote power-on is not included.
+### Remote Power & Wake (Wake-on-LAN)
 
-### New in this preview (0.5.42)
+- **Wake Computer button on iPhone**: Wake your sleeping Windows PC over local Wi-Fi from both the *Computer Sync* and *Computer Tasks* views.
+- **Ethernet MAC Detection**: The Windows app automatically detects and displays your PC's Ethernet MAC address in the *Phone connection* tab for easy entry on iPhone.
+- **Automated Android Screen Wake & Sleep**: ADB tasks automatically wake the Android device screen when a task begins, and return it to sleep when finished or cancelled.
+
+### Recent fixes & improvements (0.5.42 - 0.5.43)
 
 - Fixes Nothing Bundt Cakes birthday day selection by waiting for day choices to populate after selecting the month, and validates the full date before submission.
 - Independent Bundtastic Rewards enrollment even when bakery dropdown options take time to load.

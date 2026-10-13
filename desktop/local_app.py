@@ -63,7 +63,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.42"
+BUILD_VERSION = "0.5.43"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -266,6 +266,41 @@ def list_adb_devices() -> list[dict[str, str]]:
 
 def adb_target(adb: str, serial: str, *args: str) -> list[str]:
     return [adb, *(["-s", serial] if serial else []), *args]
+
+
+def adb_wake_device(serial: str = "") -> bool:
+    adb = find_adb()
+    if not adb:
+        return False
+    try:
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"), timeout=5)
+        return True
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def adb_sleep_device(serial: str = "") -> bool:
+    adb = find_adb()
+    if not adb:
+        return False
+    try:
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"), timeout=5)
+        return True
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def get_primary_mac_address() -> str:
+    try:
+        cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+               "(Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1).MacAddress"]
+        out = run_hidden(cmd, capture_output=True, text=True, timeout=5).stdout.strip()
+        if out and re.match(r"^[0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}$", out):
+            return out.replace("-", ":").upper()
+    except Exception:
+        pass
+    node = uuid.getnode()
+    return ":".join(f"{(node >> (i * 8)) & 0xff:02X}" for i in reversed(range(6)))
 
 
 def _taco_ui(adb: str, serial: str) -> ET.Element:
@@ -876,6 +911,12 @@ class Handler(SimpleHTTPRequestHandler):
             profiles = load_profiles()
             self.send_json(200, {
                 "local": True, "version": BUILD_VERSION, "profiles": profiles, "warning": PROFILE_WARNING,
+                "mac": get_primary_mac_address(),
+            })
+            return
+        if self.path == "/api/system/network":
+            self.send_json(200, {
+                "ok": True, "mac": get_primary_mac_address(), "wol_supported": True,
             })
             return
         if parsed_url.path == "/api/adb":
@@ -996,6 +1037,14 @@ class Handler(SimpleHTTPRequestHandler):
                     CHEESECAKE.approve()
                     self.send_json(200, {"ok":True,"message":"Signup approved. The helper will click Sign Up once."})
                     return
+            if self.path == "/api/system/wake-android":
+                serial = str(payload.get("device_serial", "")).strip()
+                self.send_json(200, {"ok": adb_wake_device(serial)})
+                return
+            if self.path == "/api/system/sleep-android":
+                serial = str(payload.get("device_serial", "")).strip()
+                self.send_json(200, {"ok": adb_sleep_device(serial)})
+                return
             if self.path == "/api/profile/custom":
                 label = str(payload.get("label", "")).strip()
                 app = str(payload.get("app", "Custom account")).strip()
@@ -1070,6 +1119,7 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json(409, status)
                     return
                 details = parse_details(str(payload.get("details", "")))
+                adb_wake_device(serial)
                 if payload.get("reset_existing") is True and not resume_current:
                     clear_android_app_data("com.dutchbros.loyalty", "Dutch Bros", serial)
                 if payload.get("terms_accepted") is not True:
@@ -1362,6 +1412,7 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     clear_android_app_data("com.tacobell.ordering", "Taco Bell", serial)
                     (DATA_ROOT / ("order-submission-" + re.sub(r"[^A-Za-z0-9_-]", "_", serial) + ".lock")).unlink(missing_ok=True)
+                    adb_sleep_device(serial)
                 finally:
                     TACO_CHECKOUT_LOCK.release()
                 self.send_json(200, {"ok": True, "message": "Taco Bell Android data cleared for the next person."})
@@ -1384,7 +1435,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
                     raise ValueError("Another Android action is running. Wait for it to finish.")
                 try:
-                    result = start_taco_signin(str(payload.get("device_serial", "")).strip(), str(payload.get("email", "")).strip())
+                    serial = str(payload.get("device_serial", "")).strip()
+                    adb_wake_device(serial)
+                    result = start_taco_signin(serial, str(payload.get("email", "")).strip())
                 finally:
                     TACO_CHECKOUT_LOCK.release()
                 self.send_json(200 if result.get("ok") else 409, result)

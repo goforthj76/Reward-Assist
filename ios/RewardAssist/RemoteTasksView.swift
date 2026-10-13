@@ -24,6 +24,8 @@ struct RemoteTasksView: View {
     @State private var cardNumber = ""
     @State private var cardPIN = ""
     @State private var acceptedReviews: Set<String> = []
+    @AppStorage("remoteWakeMac") private var wakeMac = ""
+    @State private var wakeStatus = ""
     struct RemoteJob: Identifiable {
         let id: String
         let device: String
@@ -33,10 +35,26 @@ struct RemoteTasksView: View {
     var body: some View {
         Form {
             Section("Home computer") {
-                if devices.isEmpty { Text("No computer online. Sign in and enable Phone requests in the updated desktop app.") }
+                if devices.isEmpty { Text("No computer online. If your computer is in Sleep mode, tap Wake below (Ethernet required).").font(.footnote) }
                 Picker("Computer", selection:$device) {
                     Text("Choose computer").tag("")
                     ForEach(devices,id: \.self) { Text("Computer " + $0.prefix(8)).tag($0) }
+                }
+                HStack {
+                    TextField("PC MAC address", text:$wakeMac)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.footnote)
+                    Button(action: {
+                        let (_, msg) = WakeOnLAN.send(mac: wakeMac)
+                        wakeStatus = msg
+                    }) {
+                        Label("Wake", systemImage:"bolt.fill")
+                    }
+                    .disabled(wakeMac.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                if !wakeStatus.isEmpty {
+                    Text(wakeStatus).font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("New account setup") {
