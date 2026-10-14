@@ -31,8 +31,11 @@ public class MainActivity extends Activity {
     });
     Button stop=new Button(this);stop.setText("Stop relay");box.addView(stop);stop.setOnClickListener(v->{prefs.edit().putBoolean("enabled",false).putString("status","Stopped. Remote wake is disabled.").apply();stopService(new Intent(this,RelayService.class));});
     status=new TextView(this);status.setPadding(0,24,0,24);box.addView(status);
+    Button battery=new Button(this);battery.setText("Open battery settings");box.addView(battery);
+    battery.setOnClickListener(v->{try{startActivity(new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));}catch(Exception e){startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:"+getPackageName())));}});
+    TextView batteryHelp=new TextView(this);batteryHelp.setText("For remote wake, set this app to Unrestricted / Don't optimize in Android battery settings. Keep the tablet plugged into a charger that stays powered while the PC sleeps. Screen off is fine. Force-stopping the app prevents automatic recovery.");box.addView(batteryHelp);
     TextView help=new TextView(this);help.setText("Keep the tablet charged. The relay checks for requests every 20 seconds. Android may suspend it; verify it stays online with the screen off. After restarting the tablet, open this app and enable the relay again.\n\nA sent wake signal is not proof the PC woke up. The iPhone waits for Reward Assist on the PC to reconnect. Nothing here switches off power or bypasses Windows sign-in.");box.addView(help);
   }
-  protected void onResume(){super.onResume();handler.post(update);}
+  protected void onResume(){super.onResume();if(getSharedPreferences("relay",0).getBoolean("enabled",false)){try{startForegroundService(new Intent(this,RelayService.class));}catch(Exception e){getSharedPreferences("relay",0).edit().putString("status","Could not restart relay. Tap Enable wake relay.").apply();}}handler.post(update);}
   protected void onPause(){handler.removeCallbacks(update);super.onPause();}
 }

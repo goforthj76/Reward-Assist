@@ -57,7 +57,12 @@
           const dutch=input.app==='Dutch Bros';
           await api(dutch?'/api/dutch/start':'/api/web/start',{method:'POST',body:JSON.stringify({app:input.app,details:input.details,...(dutch?{save_qr:true,terms_accepted:true}:{})})});
           await call('update',{id:job.id,stage:'running'});
-        }catch(error){await call('update',{id:job.id,stage:'attention'});active=null;throw error}
+        }catch(error){
+          // Preserve startup failures in the encrypted response, just like later failures.
+          const message=String(error?.message||'The computer could not start this request.');
+          await call('update',{id:job.id,stage:'attention',payload:await cloudEncrypt({message})});
+          active=null;throw error;
+        }
       }
       if(active){
         let s=active.state || await api(active.app==='Dutch Bros'?'/api/dutch/status':'/api/web/status?app='+encodeURIComponent(active.app));

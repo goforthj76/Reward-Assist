@@ -89,7 +89,8 @@ struct RemoteTasksView: View {
                     VStack(alignment:.leading,spacing:8) {
                         Text(job.stage.replacingOccurrences(of:"_",with:" ").capitalized).font(.headline)
                         Text("Request " + job.id.prefix(8)).font(.caption).foregroundStyle(.secondary)
-                        if let text=job.info["message"] as? String { Text(text).font(.footnote) }
+                        if let text=job.info["message"] as? String, !text.isEmpty { Text(text).font(.footnote) }
+                        else if job.stage == "attention" { Text("The computer did not provide an error description. Check Phone connection in Reward Assist on the PC. This request will not be retried automatically.").font(.footnote) }
                         if job.stage == "waiting_code" {
                             SecureField("Verification code",text:$code).keyboardType(.numberPad)
                             Button("Send code") { Task { await sendCode(job) } }.disabled(busy || code.count < 4 || code.count > 8)
