@@ -62,6 +62,7 @@ struct ActivityEntry: Codable, Identifiable {
     var program: String
     var stage: String
     var date: Date
+    var email: String?
 }
 
 @MainActor final class ActivityStore: ObservableObject {
@@ -70,11 +71,12 @@ struct ActivityEntry: Codable, Identifiable {
     init() {
         if let data=UserDefaults.standard.data(forKey:"taskActivity"), let saved=try? JSONDecoder().decode([ActivityEntry].self,from:data) { entries=saved }
     }
-    func record(id:String,program:String?,stage:String,date:Date) {
+    func record(id:String,program:String?,stage:String,date:Date,email:String?=nil) {
         let key=id+":"+stage
         guard !entries.contains(where:{$0.id==key}) else { return }
         let name=program ?? entries.first(where:{$0.id.hasPrefix(id+":")})?.program ?? "Computer task"
-        entries.append(ActivityEntry(id:key,program:name,stage:stage,date:date))
+        let entryEmail = email ?? entries.first(where:{$0.id.hasPrefix(id+":")})?.email
+        entries.append(ActivityEntry(id:key,program:name,stage:stage,date:date,email:entryEmail))
         entries=Array(entries.sorted{$0.date > $1.date}.prefix(200))
         if let data=try? JSONEncoder().encode(entries) { UserDefaults.standard.set(data,forKey:"taskActivity") }
     }
@@ -86,7 +88,7 @@ struct ActivityView: View {
     private var events: [ActivityEntry] {
         let accounts=wallet.cards.compactMap { card -> ActivityEntry? in
             guard let date=card.createdAt else { return nil }
-            return ActivityEntry(id:card.id.uuidString,program:card.name,stage:"account_created",date:date)
+            return ActivityEntry(id:card.id.uuidString,program:card.name,stage:"account_created",date:date,email:card.email)
         }
         return (activity.entries+accounts).sorted{$0.date > $1.date}
     }
@@ -110,7 +112,19 @@ struct ActivityView: View {
                 if events.isEmpty { Text("No recorded activity yet. New account dates and computer task updates will appear here.").foregroundStyle(.secondary) }
                 ForEach(events) { event in
                     VStack(alignment:.leading,spacing:6) {
-                        Text(event.program).font(.headline)
+                        HStack {
+                            Text(event.program).font(.headline)
+                            Spacer()
+                            if let email = event.email, !email.isEmpty {
+                                Text(email)
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.teal.opacity(0.12))
+                                    .foregroundStyle(.teal)
+                                    .cornerRadius(6)
+                            }
+                        }
                         Text(event.stage.replacingOccurrences(of:"_",with:" ").capitalized)
                         Text(event.date.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)
                     }.padding(.vertical,4)

@@ -9,7 +9,8 @@ class PhoneCfaFlow {
       location: input.location || '75022',
       pickup_method: input.pickup_method || 'Drive-thru',
       reward: input.reward || '',
-      auto_submit: true
+      auto_submit: true,
+      clear_initial: true
     };
   }
   async validate() {
@@ -19,6 +20,10 @@ class PhoneCfaFlow {
   }
   async start() {
     this.phase = 'running';
+    if (this.plan.clear_initial) {
+      await this.api('/api/android/reset', {method: 'POST', body: JSON.stringify({app: 'Chick-fil-A', device_serial: this.serial})});
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
     const rawBlocks = this.details.split(/\n\s*END(?:\n|$)/i).map(b => b.trim()).filter(Boolean);
     const blocks = rawBlocks.length ? rawBlocks : [this.details];
     let count = 0;

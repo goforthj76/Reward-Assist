@@ -24,6 +24,7 @@ struct RemoteTasksView: View {
     @State private var cardNumber = ""
     @State private var cardPIN = ""
     @State private var autoSubmit = true
+    @State private var clearInitial = true
     @State private var acceptedReviews: Set<String> = []
     @AppStorage("remoteWakeMac") private var wakeMac = ""
     @AppStorage("remoteWakeIP") private var wakeIP = ""
@@ -87,8 +88,9 @@ struct RemoteTasksView: View {
                         Text("Curbside").tag("Curbside")
                     }
                     Picker("Reward item", selection: $reward) {
-                        ForEach(["Chick-fil-A® Chicken Sandwich", "8 Ct Chick-fil-A® Nuggets", "Chocolate Chunk Cookie", "Fudge Brownie", "Small Waffle Potato Fries®"], id: \.self) { Text($0) }
+                        ForEach(["Chocolate Chunk Cookie", "Chocolate Fudge Brownie"], id: \.self) { Text($0) }
                     }
+                    Toggle("Clear app storage before starting", isOn: $clearInitial)
                     Toggle("Autonomous checkout & auto-clear storage", isOn: $autoSubmit)
                     TextField("Android serial (optional with one phone)", text: $serial)
                         .textInputAutocapitalization(.never)
@@ -162,7 +164,19 @@ struct RemoteTasksView: View {
             jobs = (result["jobs"] as? [[String:Any]] ?? []).compactMap {
                 guard let id=$0["id"] as? String, let device=$0["device"] as? String, let stage=$0["stage"] as? String else { return nil }
                 let info = ($0["payload"] as? String).flatMap { try? sync.remoteDetails($0) } ?? [:]
-                activity.record(id:id,program:info["app"] as? String,stage:stage,date:Date(timeIntervalSince1970:($0["updated"] as? Double ?? Date().timeIntervalSince1970 * 1000) / 1000))
+                let taskEmail = (info["details"] as? String)?.extractEmail() ?? info["email"] as? String
+                activity.record(id:id,program:info["app"] as? String,stage:stage,date:Date(timeIntervalSince1970:($0["updated"] as? Double ?? Date().timeIntervalSince1970 * 1000) / 1000),email:taskEmail)
+                if (info["app"] as? String) == "Chick-fil-A" && stage == "complete" && !syncedCompletions.contains(id) {
+                    Task {
+                        let center = UNUserNotificationCenter.current()
+                        let content = UNMutableNotificationContent()
+                        content.title = "🎉 Chick-fil-A Order Ready!"
+                        content.body = "Your Chick-fil-A order is ready for pickup! Head to your selected pickup spot."
+                        content.sound = .default
+                        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 15 * 60, repeats: false)
+                        try? await center.add(UNNotificationRequest(identifier: "cfa-ready-\(id)", content: content, trigger: trigger))
+                    }
+                }
                 return RemoteJob(id:id,device:device,stage:stage,info:info)
             }
             let completed=jobs.filter { $0.stage == "complete" && !syncedCompletions.contains($0.id) }
@@ -182,7 +196,8 @@ struct RemoteTasksView: View {
                     "location": loc,
                     "pickup_method": pickupMethod,
                     "reward": reward,
-                    "auto_submit": autoSubmit
+                    "auto_submit": autoSubmit,
+                    "clear_initial": clearInitial
                 ]
                 content["cfa_plan"] = plan
                 content["android_serial"] = serial
@@ -225,5 +240,15 @@ struct RemoteTasksView: View {
             message = "Code sent. Waiting for the computer."
         } catch { message = error.localizedDescription }
         busy = false
+    }
+}
+
+fileprivate extension String {
+    func extractEmail() -> String? {
+        let pattern = #"[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,64}"#
+        if let range = self.range(of: pattern, options: .regularExpression) {
+            return String(self[range])
+        }
+        return nil
     }
 }

@@ -43,12 +43,23 @@ struct PrivacyGate<Content: View>: View {
 struct DashboardView: View {
     @EnvironmentObject var wallet: WalletStore
     @State private var notice=""
+    @State private var secretTaps = 0
+    @State private var showSecretMenu = false
     private var expiring:[RewardCard] {wallet.cards.filter {card in guard let date=card.expiresAt else{return false};return date >= Calendar.current.startOfDay(for:Date()) && date <= Date().addingTimeInterval(30*86400)}.sorted{($0.expiresAt ?? .distantFuture)<($1.expiresAt ?? .distantFuture)}}
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
                 VStack(alignment:.leading,spacing:12) {
-                    Text("YOUR DAILY PERKS").font(.caption.bold()).tracking(2)
+                    Text("YOUR DAILY PERKS")
+                        .font(.caption.bold())
+                        .tracking(2)
+                        .onTapGesture {
+                            secretTaps += 1
+                            if secretTaps >= 5 {
+                                secretTaps = 0
+                                showSecretMenu = true
+                            }
+                        }
                     Text("Make the most\nof every visit.").font(.system(size:36,weight:.bold,design:.rounded))
                     HStack {Label("\(wallet.cards.count) accounts",systemImage:"wallet.pass");Spacer();Label("\(expiring.count) expiring",systemImage:"clock")}.font(.caption.bold())
                 }.foregroundStyle(.white).padding(26).frame(maxWidth:.infinity,alignment:.leading).background(LinearGradient(colors:[Color(red:0.04,green:0.10,blue:0.22),.teal],startPoint:.topLeading,endPoint:.bottomTrailing),in:RoundedRectangle(cornerRadius:30))
@@ -87,23 +98,114 @@ struct DashboardView: View {
                 NavigationLink("Notification settings & test") {HomeView()}
             }.padding(20)
         }.background(Color(uiColor:.systemGroupedBackground)).navigationTitle("Today")
+        .sheet(isPresented: $showSecretMenu) {
+            SecretDiagnosticView()
+        }
     }
     @MainActor private func schedule() async {
         do {
             let center=UNUserNotificationCenter.current()
-            guard try await center.requestAuthorization(options:[.alert,.sound]) else {notice="Allow notifications in Settings. In LiveContainer, enable Fix Local Notifications for this app.";return}
+            guard try await center.requestAuthorization(options:[.alert,.sound,.badge]) else {notice="Allow notifications in Settings. In LiveContainer, enable Fix Local Notifications for this app.";return}
             await wallet.scheduleBundtReminders(requestPermission:false)
             let pending=await center.pendingNotificationRequests()
             center.removePendingNotificationRequests(withIdentifiers:pending.filter{$0.identifier.hasPrefix("expiry-")}.map(\.identifier))
             var count=0
-            for card in expiring.prefix(50) {
-                guard let date=card.expiresAt, let fire=Calendar.current.date(bySettingHour:9,minute:0,second:0,of:date), fire > Date() else {continue}
-                let content=UNMutableNotificationContent();content.title="Check your rewards";content.body="A saved reward expires today. Open your wallet for details.";content.sound = .default
-                let trigger=UNCalendarNotificationTrigger(dateMatching:Calendar.current.dateComponents([.year,.month,.day,.hour,.minute],from:fire),repeats:false)
-                try await center.add(UNNotificationRequest(identifier:"expiry-\(card.id)",content:content,trigger:trigger));count+=1
+            for card in expiring.prefix(40) {
+                guard let expiry = card.expiresAt else { continue }
+                let reminderIntervals: [(days: Int, message: String)] = [
+                    (7, "7 days left: Your \(card.name) reward expires in a week! Don't forget to use it."),
+                    (3, "3 days left: Your \(card.name) reward is expiring soon!"),
+                    (1, "Tomorrow: Your \(card.name) reward expires tomorrow! Last chance to redeem."),
+                    (0, "Expires today: Your \(card.name) reward expires today! Check your wallet for details.")
+                ]
+                for rem in reminderIntervals {
+                    guard let fireDate = Calendar.current.date(byAdding: .day, value: -rem.days, to: expiry),
+                          let scheduledTime = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: fireDate),
+                          scheduledTime > Date() else { continue }
+                    let content = UNMutableNotificationContent()
+                    content.title = "Reward Expiring: \(card.name)"
+                    content.body = rem.message
+                    content.sound = .default
+                    let trigger = UNCalendarNotificationTrigger(dateMatching: Calendar.current.dateComponents([.year,.month,.day,.hour,.minute], from: scheduledTime), repeats: false)
+                    try await center.add(UNNotificationRequest(identifier: "expiry-\(card.id)-\(rem.days)d", content: content, trigger: trigger))
+                    count += 1
+                }
             }
-            notice="Scheduled \(count) expiration reminders at 9 AM. Enable again after changing saved dates."
+            notice="Scheduled \(count) countdown reminders (7-day, 3-day, 1-day, and day-of). Keep notifications enabled."
         } catch {notice="Could not schedule all reminders. Please try again."}
+    }
+}
+
+struct SecretDiagnosticView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var status = ""
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Developer Diagnostics & Alert Testing").font(.headline)
+                    Text("Test notifications on this iPhone. In LiveContainer, ensure 'Fix Local Notifications' is turned ON in app settings.").font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("Instant notification tests") {
+                    Button(action: {
+                        Task {
+                            let center = UNUserNotificationCenter.current()
+                            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+                            let content = UNMutableNotificationContent()
+                            content.title = "Reward Assist Test Notification"
+                            content.body = "Notifications are active! Your reward countdowns and Chick-fil-A order alerts will notify you here."
+                            content.sound = .default
+                            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+                            try? await center.add(UNNotificationRequest(identifier: "test-alert-\(UUID().uuidString)", content: content, trigger: trigger))
+                            status = "Test notification sent! Check your notification banner/lock screen."
+                        }
+                    }) {
+                        Label("Send Test Notification Now (1s)", systemImage: "bell.fill")
+                    }
+                    Button(action: {
+                        Task {
+                            let center = UNUserNotificationCenter.current()
+                            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+                            let content = UNMutableNotificationContent()
+                            content.title = "🎉 Chick-fil-A Order Ready!"
+                            content.body = "Your Chick-fil-A order is ready for pickup! Head to your selected pickup spot."
+                            content.sound = .default
+                            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
+                            try? await center.add(UNNotificationRequest(identifier: "test-cfa-\(UUID().uuidString)", content: content, trigger: trigger))
+                            status = "Chick-fil-A Ready notification scheduled for 2 seconds!"
+                        }
+                    }) {
+                        Label("Test 'Chick-fil-A Order Ready' Alert (2s)", systemImage: "bag.fill")
+                    }
+                    Button(action: {
+                        Task {
+                            let center = UNUserNotificationCenter.current()
+                            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+                            let content = UNMutableNotificationContent()
+                            content.title = "⚠️ Reward Expiring Soon"
+                            content.body = "3 days left: Your Chick-fil-A birthday reward expires soon! Open your wallet to use it."
+                            content.sound = .default
+                            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
+                            try? await center.add(UNNotificationRequest(identifier: "test-expiry-\(UUID().uuidString)", content: content, trigger: trigger))
+                            status = "Expiring alert scheduled for 2 seconds!"
+                        }
+                    }) {
+                        Label("Test 'Reward Expiring Soon' Alert (2s)", systemImage: "clock.badge.exclamationmark")
+                    }
+                }
+                if !status.isEmpty {
+                    Section {
+                        Text(status).font(.footnote.bold()).foregroundStyle(.teal)
+                    }
+                }
+            }
+            .navigationTitle("Secret Diagnostics")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
     }
 }
 struct BirthdayCalendar: View {
