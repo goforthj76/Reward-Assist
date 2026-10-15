@@ -2,7 +2,7 @@
 
 Reward Assist brings account details, reward QR cards and birthday reminders together with a native iPhone wallet and a Windows companion for supported website and Android setup.
 
-**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.43)
+**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.44)
 
 ## Repository layout
 
@@ -20,12 +20,12 @@ Local profiles and QR snapshots are intentionally excluded from Git. Optional Ta
 
 Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories, virtual environments, browser downloads, and user data remain untracked.
 
-## Current preview: Windows 0.5.43 / iPhone 0.3.4 (build 7)
+## Current preview: Windows 0.5.44 / iPhone 0.3.8 (build 17)
 
-[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.43/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.43/Reward-Assist.ipa)
+[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.44/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.44/Reward-Assist.ipa)
 
 1. Close Reward Assist on Windows and run the installer.
-2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.43**. First-time users should follow the installer's Load unpacked instructions.
+2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.44**. First-time users should follow the installer's Load unpacked instructions.
 3. Import the direct IPA into your compatible sideloading tool. It is a preview, not an App Store installation.
 4. Sign into the same Reward Assist account on both devices. Enable **Allow phone requests** in the Windows **Phone connection** tab, then choose your computer on iPhone.
 
