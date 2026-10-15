@@ -7,6 +7,7 @@ struct WakeRelayView: View {
     struct Relay: Identifiable { let id:String; let device:String; let online:Bool; let result:String }
     @State private var relays:[Relay]=[]
     @State private var computers:[String]=[]
+    @State private var computerStatusKnown=false
     @State private var selected=""
     @State private var pairingKey=""
     @State private var message=""
@@ -27,6 +28,9 @@ struct WakeRelayView: View {
                     VStack(alignment:.leading,spacing:10) {
                         Text("Computer " + relay.device.prefix(8)).font(.headline)
                         Label(relay.online ? "Tablet online" : "Tablet offline",systemImage:relay.online ? "checkmark.circle.fill" : "wifi.slash").foregroundStyle(relay.online ? Color.green : Color.secondary)
+                        Label(computerStatusKnown ? (computers.contains(relay.device) ? "Computer online · Reward Assist connected" : "Computer unavailable · sleeping, offline, or app disconnected") : "Checking computer connection…", systemImage: "desktopcomputer")
+                            .font(.footnote)
+                            .foregroundStyle(computerStatusKnown && computers.contains(relay.device) ? Color.green : Color.secondary)
                         if !relay.result.isEmpty { Text(resultText(relay.result)).font(.footnote) }
                         Button("Wake computer") { Task { await wake(relay) } }.buttonStyle(.borderless).disabled(busy || !relay.online || !waitingFor.isEmpty)
                         Button("Remove pairing",role:.destructive) { removal=relay }.buttonStyle(.borderless).disabled(busy)
@@ -96,11 +100,12 @@ struct WakeRelayView: View {
             loaded=true
             let remote=try await sync.remoteRead()
             computers=(remote["devices"] as? [[String:Any]] ?? []).compactMap{$0["id"] as? String}
+            computerStatusKnown=true
             if !waitingFor.isEmpty {
                 if computers.contains(waitingFor) {message="Computer online. Return to Computer tasks to start your request.";waitingFor="";deadline=nil}
                 else if let deadline,Date()>deadline {message="Computer has not connected yet. Check sleep settings, home Wi-Fi and Reward Assist. Nothing was submitted.";waitingFor="";self.deadline=nil}
             }
-        }catch{message="Wake connection needs attention: " + error.localizedDescription}
+        }catch{computerStatusKnown=false;message="Wake connection needs attention: " + error.localizedDescription}
     }
     @MainActor private func pair() async {
         busy=true;defer{busy=false}

@@ -21,8 +21,8 @@ class PhoneTacoFlow {
   status() {return {stage:'waiting_code',message:'Website signup finished. Enter the verification code sent for Taco Bell on Android.',codePhase:'android'}}
   async code(code) {
     this.phase='verifying_android';
-    const s=await this.post('verify',{code});
-    if(s.stage!=='signed_in'){this.phase='android_code';return { ...this.status(),message:s.message }}
+    const verification=await this.post('verify',{code});
+    if(verification.stage!=='signed_in'){this.phase='android_code';return { ...this.status(),message:verification.message }}
     this.phase='preparing_checkout';
     await this.post('prepare',{plan:{...this.plan,checkout_confirmed:true}});
     const payment=await this.post('payment',{payment_method:this.plan.payment_method});

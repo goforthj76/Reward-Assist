@@ -152,17 +152,7 @@ struct RemoteTasksView: View {
                 let info = ($0["payload"] as? String).flatMap { try? sync.remoteDetails($0) } ?? [:]
                 let taskEmail = (info["details"] as? String)?.extractEmail() ?? info["email"] as? String
                 activity.record(id:id,program:info["app"] as? String,stage:stage,date:Date(timeIntervalSince1970:($0["updated"] as? Double ?? Date().timeIntervalSince1970 * 1000) / 1000),email:taskEmail)
-                if (info["app"] as? String) == "Chick-fil-A" && stage == "complete" && !syncedCompletions.contains(id) {
-                    Task {
-                        let center = UNUserNotificationCenter.current()
-                        let content = UNMutableNotificationContent()
-                        content.title = "🎉 Chick-fil-A Order Ready!"
-                        content.body = "Your Chick-fil-A order is ready for pickup! Head to your selected pickup spot."
-                        content.sound = .default
-                        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 15 * 60, repeats: false)
-                        try? await center.add(UNNotificationRequest(identifier: "cfa-ready-\(id)", content: content, trigger: trigger))
-                    }
-                }
+                // Task completion does not establish that a restaurant order is ready.
                 if stage == "review_required", let nonce = info["nonce"] as? String, !nonce.isEmpty {
                     Task {
                         await approve(RemoteJob(id:id,device:device,stage:stage,info:info), nonce: nonce)

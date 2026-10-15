@@ -153,7 +153,7 @@ struct SecretDiagnosticView: View {
                             _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
                             let content = UNMutableNotificationContent()
                             content.title = "Reward Assist Test Notification"
-                            content.body = "Notifications are active! Your reward countdowns and Chick-fil-A order alerts will notify you here."
+                            content.body = "Notifications are active! Your enabled reward reminders will notify you here."
                             content.sound = .default
                             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
                             try? await center.add(UNNotificationRequest(identifier: "test-alert-\(UUID().uuidString)", content: content, trigger: trigger))
@@ -167,11 +167,11 @@ struct SecretDiagnosticView: View {
                             let center = UNUserNotificationCenter.current()
                             _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
                             let content = UNMutableNotificationContent()
-                            content.title = "🎉 Chick-fil-A Order Ready!"
-                            content.body = "Your Chick-fil-A order is ready for pickup! Head to your selected pickup spot."
+                            content.title = "TEST — Chick-fil-A notification"
+                            content.body = "This is a notification test only. No order was placed."
                             content.sound = .default
                             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
-                            try? await center.add(UNNotificationRequest(identifier: "test-cfa-\(UUID().uuidString)", content: content, trigger: trigger))
+                            try? await center.add(UNNotificationRequest(identifier: "test-cfa-once", content: content, trigger: trigger))
                             status = "Chick-fil-A Ready notification scheduled for 2 seconds!"
                         }
                     }) {

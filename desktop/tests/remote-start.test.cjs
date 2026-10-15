@@ -11,7 +11,7 @@ async function scenario(app){
   cloudDecrypt:async()=>({app,details:'authorized test fixture',confirmed:true}),cloudEncrypt:async x=>JSON.stringify(x)};
  runInNewContext(readFileSync(__dirname+'/../demo/remote.js','utf8'),context);
  // onchange starts the first async tick; wait for its side effects to settle.
- toggle.onchange();for(let i=0;i<40;i++)await Promise.resolve();
+ toggle.checked=true;toggle.onchange();for(let i=0;i<40;i++)await Promise.resolve();
  return {updates,starts};
 }
 (async()=>{

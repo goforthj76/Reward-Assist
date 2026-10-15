@@ -3,7 +3,21 @@ import UserNotifications
 
 @main
 struct RewardAssistApp: App {
-    init() { UNUserNotificationCenter.current().delegate = RewardNotificationDelegate.shared }
+    init() {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = RewardNotificationDelegate.shared
+        // Remove legacy timers that never established an order was ready.
+        Task {
+            let pending = await center.pendingNotificationRequests()
+            center.removePendingNotificationRequests(withIdentifiers: pending.filter {
+                $0.identifier.hasPrefix("cfa-ready-") || $0.identifier.hasPrefix("test-cfa-")
+            }.map(\.identifier))
+            let delivered = await center.deliveredNotifications()
+            center.removeDeliveredNotifications(withIdentifiers: delivered.filter {
+                $0.request.identifier.hasPrefix("cfa-ready-") || $0.request.identifier.hasPrefix("test-cfa-")
+            }.map { $0.request.identifier })
+        }
+    }
     @StateObject private var wallet = WalletStore()
     @StateObject private var activity = ActivityStore()
     var body: some Scene { WindowGroup { PrivacyGate { RootView() }.environmentObject(wallet).environmentObject(activity) } }

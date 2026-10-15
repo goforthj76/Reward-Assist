@@ -1,7 +1,7 @@
 // Opt-in foreground companion. No shell commands or arbitrary URLs are accepted.
 (() => {
   const allowed=new Set(['Einstein Bros. Bagels','sweetFrog','Taco Bell','Dutch Bros','Nothing Bundt Cakes','The Cheesecake Factory',"Wendy's",'Chick-fil-A']);
-  let enabled=false, busy=false, active=null;
+  let enabled=localStorage.rewardAssistPhoneRequests==='true', busy=false, active=null;
   const device=localStorage.rewardAssistComputerID || crypto.randomUUID();
   localStorage.rewardAssistComputerID=device;
   const panel=document.createElement('section');
@@ -16,7 +16,8 @@
   api('/api/status').then(res=>{if(res&&res.mac){const m=panel.querySelector('.computer-mac');if(m)m.textContent=res.mac}if(res&&res.ip){const ipEl=panel.querySelector('.computer-ip');if(ipEl)ipEl.textContent=res.ip}}).catch(()=>{});
   nav.querySelectorAll('button').forEach((button,index)=>button.onclick=()=>{panel.hidden=index===0;if(workspace)workspace.hidden=index===1;nav.querySelectorAll('button').forEach((item,i)=>item.setAttribute('aria-pressed',String(i===index)))});
   const toggle=panel.querySelector('input'),status=panel.querySelector('small');
-  toggle.onchange=()=>{enabled=toggle.checked;status.textContent=enabled?'Connecting…':'New requests paused. An already-started task may continue.';tick()};
+  toggle.checked=enabled;
+  toggle.onchange=()=>{enabled=toggle.checked;localStorage.rewardAssistPhoneRequests=String(enabled);status.textContent=enabled?'Connecting…':'New requests paused. An already-started task may continue.';tick()};
   const call=(action,body={})=>cloudApi('/api/remote/'+action,{method:'POST',body:JSON.stringify({device,...body})});
   const recovery=document.createElement('button');recovery.textContent='Stop abandoned web tasks and clear queue';recovery.type='button';recovery.className='secondary';panel.querySelector('.phone-control').append(recovery);
   const configBtn=document.createElement('button');configBtn.textContent='⚡ Configure Android for sleep & automation';configBtn.type='button';configBtn.className='secondary';configBtn.style.marginTop='6px';panel.querySelector('.phone-control').append(configBtn);
