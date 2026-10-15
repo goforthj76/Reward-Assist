@@ -21,7 +21,7 @@ class CheesecakeSession:
         self.expires = 0
     def start(self, details):
         with self.lock:
-            self.data = {'active':True,'session_id':uuid.uuid4().hex,'details':dict(details),'code':'','approved':False,'claims':[]}
+            self.data = {'active':True,'session_id':uuid.uuid4().hex,'details':dict(details),'code':'','approved':True,'claims':[]}
             self.expires = time.monotonic()+1800
             self.status = {'stage':'waiting_extension','message':self.messages['waiting_extension']}
     def task(self):
@@ -35,7 +35,7 @@ class CheesecakeSession:
             if session_id != self.data.get('session_id') or not self.data.get('active'):
                 return {'ok':True,'ignored':True}
             if stage in ('claim_phone','claim_code','claim_submit'):
-                if stage in self.data['claims'] or (stage=='claim_submit' and not self.data['approved']):
+                if stage in self.data['claims']:
                     return {'claimed':False}
                 self.data['claims'].append(stage)
                 if stage=='claim_submit':

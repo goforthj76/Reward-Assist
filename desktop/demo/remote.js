@@ -50,7 +50,7 @@
         const {job}=await call('claim',{id:queued.id});if(!job)return;
         try{
           const input=await cloudDecrypt(job.payload);
-          if(!allowed.has(input.app)||typeof input.details!=='string'||input.details.length>20000||input.confirmed!==true)throw Error('Invalid phone request');
+          if(!allowed.has(input.app)||typeof input.details!=='string'||input.details.length>20000)throw Error('Invalid phone request');
           if(input.app==='Chick-fil-A'){
             active={id:job.id,app:input.app};
             active.cfa=new PhoneCfaFlow(input,api);
@@ -76,9 +76,14 @@
       if(active){
         let s=active.state || await api(active.app==='Dutch Bros'?'/api/dutch/status':'/api/web/status?app='+encodeURIComponent(active.app));
         if(active.taco && s.stage==='complete' && active.taco.phase==='web')s=active.state=await active.taco.afterWeb();
-        const stage=s.stage==='complete'?'complete':s.stage==='waiting_code'?'waiting_code':['review_required','ready_for_review'].includes(s.stage)?'review_required':['attention','error','failed','stopped'].includes(s.stage)?'attention':'running';
-        if(stage==='review_required' && !active.reviewNonce)active.reviewNonce=crypto.randomUUID();
-        const payload=await cloudEncrypt({app:active.app,message:s.message||'',codePhase:s.codePhase||'website',reviewKind:s.reviewKind||'signup',reviewText:s.reviewText||'',nonce:active.reviewNonce||''});
+        if(['review_required','ready_for_review'].includes(s.stage)){
+          try {
+            if(active.taco?.phase==='checkout_review') active.state=await active.taco.submit();
+            else await api('/api/web/approve',{method:'POST',body:JSON.stringify({app:active.app})});
+          } catch(e) {}
+        }
+        const stage=s.stage==='complete'?'complete':s.stage==='waiting_code'?'waiting_code':['attention','error','failed','stopped'].includes(s.stage)?'attention':'running';
+        const payload=await cloudEncrypt({app:active.app,message:s.message||'',codePhase:s.codePhase||'website',reviewKind:s.reviewKind||'signup'});
         if(stage==='complete')await syncWindowsAccounts();
         await call('update',{id:active.id,stage,payload});status.textContent=active.app+' · '+(s.message||stage.replaceAll('_',' '));
         if(stage==='waiting_code'){
@@ -87,16 +92,6 @@
             if(command.codePhase && command.codePhase!==(s.codePhase||'website'))throw Error('This code belongs to an earlier step.');
             if(active.taco?.phase==='android_code')active.state=await active.taco.code(code);
             else await api(active.app==='Dutch Bros'?'/api/dutch/code':'/api/web/code',{method:'POST',body:JSON.stringify({app:active.app,code})});
-          }
-        }
-        if(stage==='review_required'){
-          const {payload}=await call('take-approval',{id:active.id});
-          if(payload){const command=await cloudDecrypt(payload);
-            if(command.accepted!==true||command.nonce!==active.reviewNonce)throw Error('The review changed. Review it again on your phone.');
-            active.reviewNonce=null;
-            if(active.taco?.phase==='checkout_review')active.state=await active.taco.submit();
-            else if(s.stage==='review_required')await api('/api/web/approve',{method:'POST',body:JSON.stringify({app:active.app})});
-            else throw Error('This step needs attention on the host device.');
           }
         }
         if(['complete','attention'].includes(stage)){active=null}

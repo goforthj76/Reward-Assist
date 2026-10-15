@@ -141,10 +141,6 @@
     if (firstName) {
       fillDetails(task.details);
       checkSecondCheckbox();
-      if (!task.approved) {
-        await report("review_required", "Birthday is filled as MM/DD and the required second checkbox is selected. Review the official terms, then approve creation in Rewards Assistant.");
-        return;
-      }
       if (finalSubmitAttempts < 3 && Date.now() - lastFinalSubmit > 4000) {
         const finish = button(/create account|complete sign up|sign up|confirm|finish/i);
         if (finish) {

@@ -1572,7 +1572,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "queue": queue,
                     "queue_index": 0,
                     "verification_code": "",
-                    "approved": False,
+                    "approved": True,
                     "created_at": dt.datetime.now().isoformat(timespec="seconds"),
                 }
                 (session_root / "task.json").write_text(json.dumps(task), encoding="utf-8")
@@ -1891,7 +1891,7 @@ class Handler(SimpleHTTPRequestHandler):
                         next_details = queue[index]
                         task.update({
                             "active": True, "details": next_details, "queue_index": index,
-                            "verification_code": "", "approved": False,
+                            "verification_code": "", "approved": True,
                         })
                         task_path.write_text(json.dumps(task), encoding="utf-8")
                         submission_url = start_relay(app, next_details["email"])

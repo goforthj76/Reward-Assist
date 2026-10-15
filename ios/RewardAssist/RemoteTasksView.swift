@@ -111,8 +111,7 @@ struct RemoteTasksView: View {
                     TextField("Android serial (optional with one phone)",text:$serial).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Text("Multi-account batches separated by END are supported. When autonomous checkout is enabled, orders are placed and storage is reset automatically.").font(.footnote)
                 }
-                Toggle("I authorize this account setup and the form submission using these details",isOn:$confirmed)
-                Button("Start on computer") { Task { await submit() } }.disabled(busy || device.isEmpty || details.isEmpty || !confirmed)
+                Button("Start on computer") { Task { await submit() } }.disabled(busy || device.isEmpty || details.isEmpty)
             }
             Section("Recent requests") {
                 ForEach(jobs) { job in
@@ -122,21 +121,8 @@ struct RemoteTasksView: View {
                         if let text=job.info["message"] as? String, !text.isEmpty { Text(text).font(.footnote) }
                         else if job.stage == "attention" { Text("The computer did not provide an error description. Check Phone connection in Reward Assist on the PC. This request will not be retried automatically.").font(.footnote) }
                         if job.stage == "waiting_code" {
-                            SecureField("Verification code",text:$code).keyboardType(.numberPad)
+                            SecureField("SMS / Verification code",text:$code).keyboardType(.numberPad)
                             Button("Send code") { Task { await sendCode(job) } }.disabled(busy || code.count < 4 || code.count > 8)
-                        }
-                        if job.stage == "review_required", let nonce=job.info["nonce"] as? String, !nonce.isEmpty {
-                            if job.info["reviewKind"] as? String == "order" {
-                                Text(job.info["reviewText"] as? String ?? "Checkout details unavailable").font(.footnote).textSelection(.enabled)
-                            } else if job.info["app"] as? String == "Taco Bell" {
-                                Link("Read Taco Bell terms and Rewards conditions",destination:URL(string:"https://www.tacobell.com/legal/terms-of-use")!)
-                                Text("Approve creating the account with the details you supplied and accepting Taco Bell's terms, including Rewards conditions.").font(.footnote)
-                            } else {
-                                Link("Review restaurant signup and terms",destination:URL(string:"https://www.thecheesecakefactory.com/account/signup")!)
-                                Text("Enrollment may include promotional email and SMS consent. Review the restaurant's terms before approval.").font(.footnote)
-                            }
-                            Toggle("I reviewed and accept this step",isOn:Binding(get:{acceptedReviews.contains(nonce)},set:{if $0 {acceptedReviews.insert(nonce)} else {acceptedReviews.remove(nonce)}}))
-                            Button(job.info["reviewKind"] as? String == "order" ? "Place this order" : "Accept terms and continue") { Task { await approve(job,nonce:nonce) } }.disabled(busy || !acceptedReviews.contains(nonce))
                         }
                         if ["queued","starting","running","waiting_code","review_required"].contains(job.stage) {
                             Button("Cancel request",role:.destructive) {Task {await cancel(job)}}.disabled(busy)
@@ -177,6 +163,11 @@ struct RemoteTasksView: View {
                         try? await center.add(UNNotificationRequest(identifier: "cfa-ready-\(id)", content: content, trigger: trigger))
                     }
                 }
+                if stage == "review_required", let nonce = info["nonce"] as? String, !nonce.isEmpty {
+                    Task {
+                        await approve(RemoteJob(id:id,device:device,stage:stage,info:info), nonce: nonce)
+                    }
+                }
                 return RemoteJob(id:id,device:device,stage:stage,info:info)
             }
             let completed=jobs.filter { $0.stage == "complete" && !syncedCompletions.contains($0.id) }
@@ -189,7 +180,7 @@ struct RemoteTasksView: View {
     @MainActor private func submit() async {
         busy = true
         do {
-            var content: [String:Any] = ["app":app,"details":details,"confirmed":confirmed]
+            var content: [String:Any] = ["app":app,"details":details,"confirmed":true]
             if app == "Chick-fil-A" {
                 let loc = location.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? "75022" : location
                 let plan: [String:Any] = [

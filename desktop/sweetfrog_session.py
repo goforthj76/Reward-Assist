@@ -33,20 +33,16 @@ class SweetFrogSession(CheesecakeSession):
                     return {'ok': True}
                 if phase == 'profile' and 'claim_code' not in claims:
                     return {'ok': True, 'ignored': True}
-                if self.phase != phase: self.data['approved'] = False
                 self.phase = phase
-                message = ('Review sweetFrog terms in Chrome, then approve requesting the signup SMS.' if phase == 'phone'
-                           else 'Review your birthday, selected store, email/SMS preferences and Spendgo terms in Chrome, then approve signup.')
-                self.status = {'stage': 'review_required', 'message': message, 'reviewText': message}
+                self.status = {'stage': 'filling_details', 'message': self.messages['filling_details']}
                 return {'ok': True}
             if stage in ('claim_phone', 'claim_code', 'claim_submit'):
-                valid = (stage == 'claim_phone' and self.phase == 'phone' and self.data['approved']
+                valid = (stage == 'claim_phone' and self.phase == 'phone'
                          or stage == 'claim_code' and self.status['stage'] == 'waiting_code' and bool(self.data['code'])
-                         or stage == 'claim_submit' and self.phase == 'profile' and self.data['approved'])
+                         or stage == 'claim_submit' and self.phase == 'profile')
                 if stage in claims or not valid: return {'claimed': False}
                 claims.append(stage)
                 if stage == 'claim_code': self.data['code'] = ''
-                if stage == 'claim_phone': self.data['approved'] = False
                 if stage == 'claim_submit': self.status = {'stage':'submitted','message':self.messages['submitted']}
                 return {'claimed': True}
             if stage == 'complete':

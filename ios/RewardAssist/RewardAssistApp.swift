@@ -6,7 +6,7 @@ struct RewardAssistApp: App {
     init() { UNUserNotificationCenter.current().delegate = RewardNotificationDelegate.shared }
     @StateObject private var wallet = WalletStore()
     @StateObject private var activity = ActivityStore()
-    var body: some Scene { WindowGroup { PrivacyGate { TermsGate() }.environmentObject(wallet).environmentObject(activity) } }
+    var body: some Scene { WindowGroup { PrivacyGate { RootView() }.environmentObject(wallet).environmentObject(activity) } }
 }
 
 struct RootView: View {
