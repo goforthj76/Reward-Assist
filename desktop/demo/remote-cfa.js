@@ -1,7 +1,8 @@
 // Phone-controlled Chick-fil-A flow for remote iPhone tasks
 class PhoneCfaFlow {
-  constructor(input, api) {
+  constructor(input, api, onProgress) {
     this.api = api;
+    this.onProgress = onProgress || (() => {});
     this.phase = 'starting';
     this.serial = input.android_serial || '';
     this.details = input.details || '';
@@ -21,6 +22,7 @@ class PhoneCfaFlow {
   async start() {
     this.phase = 'running';
     if (this.plan.clear_initial) {
+      await this.onProgress('Waking Android tablet & clearing app storage...');
       await this.api('/api/android/reset', {method: 'POST', body: JSON.stringify({app: 'Chick-fil-A', device_serial: this.serial})});
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
@@ -28,6 +30,8 @@ class PhoneCfaFlow {
     const blocks = rawBlocks.length ? rawBlocks : [this.details];
     let count = 0;
     for (let i = 0; i < blocks.length; i++) {
+      const idxText = blocks.length > 1 ? ` (account ${i + 1} of ${blocks.length})` : '';
+      await this.onProgress(`Opening Chick-fil-A${idxText}...`);
       await this.api('/api/android/launch', {method: 'POST', body: JSON.stringify({app: 'Chick-fil-A', device_serial: this.serial})});
       const plan = {
         location: this.plan.location || '75022',
@@ -35,9 +39,11 @@ class PhoneCfaFlow {
         reward: this.plan.reward || '',
         auto_submit: Boolean(this.plan.auto_submit)
       };
+      await this.onProgress(`Preparing & placing order${idxText}...`);
       await this.api('/api/cfa/prepare', {method: 'POST', body: JSON.stringify({device_serial: this.serial, plan})});
       count++;
       if (this.plan.auto_submit || blocks.length > 1) {
+        await this.onProgress(`Resetting app storage for next account${idxText}...`);
         await new Promise(resolve => setTimeout(resolve, 1500));
         await this.api('/api/android/reset', {method: 'POST', body: JSON.stringify({app: 'Chick-fil-A', device_serial: this.serial})});
       }

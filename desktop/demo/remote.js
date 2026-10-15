@@ -53,9 +53,11 @@
           if(!allowed.has(input.app)||typeof input.details!=='string'||input.details.length>20000)throw Error('Invalid phone request');
           if(input.app==='Chick-fil-A'){
             active={id:job.id,app:input.app};
-            active.cfa=new PhoneCfaFlow(input,api);
+            active.cfa=new PhoneCfaFlow(input,api,async msg=>{
+              await call('update',{id:job.id,stage:'running',payload:await cloudEncrypt({app:'Chick-fil-A',message:msg})});
+            });
             await active.cfa.validate();
-            await call('update',{id:job.id,stage:'running'});
+            await call('update',{id:job.id,stage:'running',payload:await cloudEncrypt({app:'Chick-fil-A',message:'Starting Chick-fil-A autonomous workflow...'})});
             active.state=await active.cfa.start();
             return;
           }

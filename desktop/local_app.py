@@ -277,7 +277,16 @@ def adb_wake_device(serial: str = "") -> bool:
     if not adb:
         return False
     try:
-        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"), timeout=5)
+        power_out = run_hidden(adb_target(adb, serial, "shell", "dumpsys", "power"), capture_output=True, text=True, timeout=5).stdout or ""
+        if "mWakefulness=Asleep" in power_out or "Display Power: state=OFF" in power_out:
+            run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "26"), timeout=5)
+            time.sleep(0.5)
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "224"), timeout=5)
+        run_hidden(adb_target(adb, serial, "shell", "wm", "dismiss-keyguard"), timeout=5)
+        run_hidden(adb_target(adb, serial, "shell", "cmd", "statusbar", "collapse"), timeout=5)
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "82"), timeout=5)
+        run_hidden(adb_target(adb, serial, "shell", "input", "swipe", "300", "850", "300", "150", "200"), timeout=5)
+        time.sleep(0.5)
         return True
     except (subprocess.SubprocessError, OSError):
         return False
