@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rewards Assistant Helper",
-  "version": "0.5.43",
+  "version": "0.5.45",
   "description": "Locally assists with restaurant rewards signup.",
   "permissions": [
     "storage",
@@ -13,7 +13,10 @@
     "https://www.tacobell.com/*",
     "https://order.wendys.com/*",
     "https://www.nothingbundtcakes.com/*",
-    "https://www.thecheesecakefactory.com/*"
+    "https://www.thecheesecakefactory.com/*",
+    "https://accounts.spendgo.com/*",
+    "https://member.spendgo.com/*",
+    "https://orders.einsteinbros.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -53,6 +56,25 @@
       ],
       "js": [
         "cheesecake.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://accounts.spendgo.com/Authenticate/sweetfrog*",
+        "https://member.spendgo.com/sweetfrog/*"
+      ],
+      "js": [
+        "sweetfrog.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://orders.einsteinbros.com/*"
+      ],
+      "js": [
+        "einstein.js"
       ],
       "run_at": "document_idle"
     }

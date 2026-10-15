@@ -7,5 +7,6 @@ desktop/pw-browsers/
 desktop/user_data/
 *.pyc
 outputs/
+android-relay/build/
 website-preview-*.png
 desktop/remote-setup.spec

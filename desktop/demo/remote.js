@@ -1,5 +1,6 @@
 // Opt-in foreground companion. No shell commands or arbitrary URLs are accepted.
 (() => {
+  const allowed=new Set(['Einstein Bros. Bagels','sweetFrog','Taco Bell','Dutch Bros','Nothing Bundt Cakes','The Cheesecake Factory',"Wendy's"]);
   let enabled=false, busy=false, active=null;
   const device=localStorage.rewardAssistComputerID || crypto.randomUUID();
   localStorage.rewardAssistComputerID=device;
@@ -20,7 +21,7 @@
   const recovery=document.createElement('button');recovery.textContent='Stop abandoned web tasks and clear queue';recovery.type='button';recovery.className='secondary';panel.querySelector('.phone-control').append(recovery);
   const configBtn=document.createElement('button');configBtn.textContent='⚡ Configure Android for sleep & automation';configBtn.type='button';configBtn.className='secondary';configBtn.style.marginTop='6px';panel.querySelector('.phone-control').append(configBtn);
   configBtn.onclick=async()=>{status.textContent='Configuring connected Android phone…';try{const res=await api('/api/system/configure-android',{method:'POST'});status.textContent=res.message||'Android configured!';}catch(e){status.textContent='Could not configure Android: '+e.message}};
-  async function stopWeb(){for(const app of ['Nothing Bundt Cakes','The Cheesecake Factory','Taco Bell',"Wendy's"])await api('/api/web/cancel',{method:'POST',body:JSON.stringify({app})})}
+  async function stopWeb(){for(const app of ['Einstein Bros. Bagels','sweetFrog','Nothing Bundt Cakes','The Cheesecake Factory','Taco Bell',"Wendy's"])await api('/api/web/cancel',{method:'POST',body:JSON.stringify({app})})}
   recovery.onclick=async()=>{
     if(busy){status.textContent='Wait for the current step to finish.';return}
     if(!confirm('Stop web automation and cancel queued requests? This does not undo accounts or orders already submitted.'))return;
@@ -57,7 +58,12 @@
           const dutch=input.app==='Dutch Bros';
           await api(dutch?'/api/dutch/start':'/api/web/start',{method:'POST',body:JSON.stringify({app:input.app,details:input.details,...(dutch?{save_qr:true,terms_accepted:true}:{})})});
           await call('update',{id:job.id,stage:'running'});
-        }catch(error){await call('update',{id:job.id,stage:'attention'});active=null;throw error}
+        }catch(error){
+          // Preserve startup failures in the encrypted response, just like later failures.
+          const message=String(error?.message||'The computer could not start this request.');
+          await call('update',{id:job.id,stage:'attention',payload:await cloudEncrypt({message})});
+          active=null;throw error;
+        }
       }
       if(active){
         let s=active.state || await api(active.app==='Dutch Bros'?'/api/dutch/status':'/api/web/status?app='+encodeURIComponent(active.app));

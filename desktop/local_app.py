@@ -5,6 +5,10 @@ from __future__ import annotations
 
 from cheesecake_session import CheesecakeSession
 CHEESECAKE = CheesecakeSession()
+from sweetfrog_session import SweetFrogSession
+SWEETFROG = SweetFrogSession()
+from einstein_session import EinsteinSession
+EINSTEIN = EinsteinSession()
 from android_verification import verify_android_code
 from setup_checks import locate_adb
 
@@ -857,7 +861,13 @@ def poll_relay(app: str, session_root: Path) -> None:
 
 
 def stop_web_task(app):
-    if app == "Nothing Bundt Cakes":
+    if app == "sweetFrog":
+        SWEETFROG.stop()
+        SWEETFROG.status = {"stage":"idle","message":"Setup stopped."}
+    elif app == "Einstein Bros. Bagels":
+        EINSTEIN.stop()
+        EINSTEIN.status = {"stage":"idle","message":"Setup stopped."}
+    elif app == "Nothing Bundt Cakes":
         with BUNDT_LOCK:
             BUNDT_SESSION.clear()
             BUNDT_SESSION["status"] = {"stage":"idle","message":"Setup stopped."}
@@ -915,6 +925,10 @@ class Handler(SimpleHTTPRequestHandler):
             if app == "Nothing Bundt Cakes":
                 with BUNDT_LOCK:
                     previous = dict(BUNDT_SESSION.get("status", {}))
+            elif app == "Einstein Bros. Bagels":
+                previous = dict(EINSTEIN.status)
+            elif app == "sweetFrog":
+                previous = dict(SWEETFROG.status)
             elif app == "The Cheesecake Factory":
                 previous = dict(CHEESECAKE.status)
             else:
@@ -931,6 +945,22 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed_url.path in {"/", "/index.html"}:
             self.send_bytes(200, (WEB_ROOT / "index.html").read_text(encoding="utf-8").replace("__BUILD_VERSION__", BUILD_VERSION).encode("utf-8"), "text/html; charset=utf-8")
             return
+        if app == "sweetFrog":
+            if parsed_url.path == "/api/extension/task":
+                self.send_json(200, SWEETFROG.task())
+                return
+            if parsed_url.path == "/api/web/status":
+                SWEETFROG.task()
+                self.send_json(200, dict(SWEETFROG.status))
+                return
+        if app == "Einstein Bros. Bagels":
+            if parsed_url.path == "/api/extension/task":
+                self.send_json(200, EINSTEIN.task())
+                return
+            if parsed_url.path == "/api/web/status":
+                EINSTEIN.task()
+                self.send_json(200, dict(EINSTEIN.status))
+                return
         if query.get("app", [""])[0] == "The Cheesecake Factory":
             if parsed_url.path == "/api/extension/task":
                 self.send_json(200, CHEESECAKE.task())
@@ -1045,6 +1075,78 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = self.read_json()
             if self.path == "/api/web/start": WEB_LAST_SEEN[str(payload.get("app", ""))] = time.monotonic()
+            if payload.get("app") == "sweetFrog":
+                if self.path == "/api/web/start":
+                    required = WEB_REQUIRED + ("phone", "store")
+                    queue = parse_detail_blocks(str(payload.get("details", "")), required)
+                    if len(queue) != 1: raise ValueError("Use one sweetFrog account at a time.")
+                    browser = find_chrome()
+                    if browser is None: raise ValueError("Install Chrome and enable the updated helper first.")
+                    SWEETFROG.start({key:queue[0][key] for key in required})
+                    try:
+                        subprocess.Popen([str(browser), "--new-window", "https://accounts.spendgo.com/Authenticate/sweetfrog"], **minimized_browser_options())
+                    except OSError:
+                        SWEETFROG.stop()
+                        raise ValueError("Chrome could not open.") from None
+                    self.send_json(200, {"ok":True,"message":SWEETFROG.status["message"]})
+                    return
+                if self.path == "/api/extension/status":
+                    result = SWEETFROG.update(str(payload.get("stage", "")), payload.get("session_id"))
+                    profile = result.pop("profile", None)
+                    if profile:
+                        profile.update(id=uuid.uuid4().hex, app="sweetFrog", label=profile["first_name"],
+                                       saved_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+                                       account_created_at=dt.datetime.now(dt.timezone.utc).isoformat())
+                        profiles = load_profiles()
+                        if not any(p.get("app")=="sweetFrog" and p.get("phone")==profile["phone"] for p in profiles):
+                            profiles.append(profile)
+                            save_profiles(profiles)
+                    self.send_json(200, result)
+                    return
+                if self.path == "/api/web/code":
+                    SWEETFROG.code(str(payload.get("code", "")).strip())
+                    self.send_json(200, {"ok":True,"message":"Code sent to Chrome."})
+                    return
+                if self.path == "/api/web/approve":
+                    SWEETFROG.approve()
+                    self.send_json(200, {"ok":True,"message":"Current sweetFrog step approved."})
+                    return
+            if payload.get("app") == "Einstein Bros. Bagels":
+                if self.path == "/api/web/start":
+                    required = WEB_REQUIRED + ("phone", "password")
+                    queue = parse_detail_blocks(str(payload.get("details", "")), required)
+                    if len(queue) != 1: raise ValueError("Use one Einstein Bros. Bagels account at a time.")
+                    browser = find_chrome()
+                    if browser is None: raise ValueError("Install Chrome and enable the updated helper first.")
+                    EINSTEIN.start({key:queue[0][key] for key in required})
+                    try:
+                        subprocess.Popen([str(browser), "--new-window", "https://orders.einsteinbros.com/signup"], **minimized_browser_options())
+                    except OSError:
+                        EINSTEIN.stop()
+                        raise ValueError("Chrome could not open.") from None
+                    self.send_json(200, {"ok":True,"message":EINSTEIN.status["message"]})
+                    return
+                if self.path == "/api/extension/status":
+                    result = EINSTEIN.update(str(payload.get("stage", "")), payload.get("session_id"))
+                    profile = result.pop("profile", None)
+                    if profile:
+                        profile.update(id=uuid.uuid4().hex, app="Einstein Bros. Bagels", label=profile["first_name"],
+                                       saved_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+                                       account_created_at=dt.datetime.now(dt.timezone.utc).isoformat())
+                        profiles = load_profiles()
+                        if not any(p.get("app")=="Einstein Bros. Bagels" and p.get("phone")==profile["phone"] for p in profiles):
+                            profiles.append(profile)
+                            save_profiles(profiles)
+                    self.send_json(200, result)
+                    return
+                if self.path == "/api/web/code":
+                    EINSTEIN.code(str(payload.get("code", "")).strip())
+                    self.send_json(200, {"ok":True,"message":"Code sent to Chrome."})
+                    return
+                if self.path == "/api/web/approve":
+                    EINSTEIN.approve()
+                    self.send_json(200, {"ok":True,"message":"Current Einstein Bros. Bagels step approved."})
+                    return
             if payload.get("app") == "The Cheesecake Factory":
                 if self.path == "/api/web/start":
                     queue = parse_detail_blocks(str(payload.get("details", "")), WEB_REQUIRED + ("phone", "password", "restaurant"))

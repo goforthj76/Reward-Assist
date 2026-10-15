@@ -1,5 +1,6 @@
 // Included in the existing authenticated worker. Payloads remain client-encrypted.
 async function remote(q, e, u, c, uid) {
+  if(u.pathname==='/api/remote/wake' || u.pathname.startsWith('/api/remote/wake/'))return wake(q,e,u,c,uid);
   const db = e.DB, now = Date.now();
   await db.prepare('CREATE TABLE IF NOT EXISTS remote_devices (user_id TEXT, id TEXT, seen INTEGER, PRIMARY KEY(user_id,id))').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS remote_jobs (user_id TEXT, id TEXT, device TEXT, payload TEXT, stage TEXT, updated INTEGER, created INTEGER, command TEXT, PRIMARY KEY(user_id,id))').run();
