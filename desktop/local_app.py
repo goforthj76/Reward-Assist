@@ -1250,6 +1250,72 @@ class Handler(SimpleHTTPRequestHandler):
                 save_profiles(profiles)
                 self.send_json(200, {"ok": True, "profiles": profiles})
                 return
+            if self.path == "/api/android/launch":
+                app_name = str(payload.get("app", "")).strip()
+                serial = str(payload.get("device_serial", "")).strip()
+                adb = find_adb()
+                if not adb:
+                    raise ValueError("ADB is not installed or available on this computer.")
+                adb_wake_device(serial)
+                if app_name == "Chick-fil-A":
+                    subprocess.run(adb_target(adb, serial, "shell", "am", "start", "-n", "com.chickfila.cfaflagship/.root.RootActivity"), capture_output=True)
+                    time.sleep(1.2)
+                    subprocess.run(adb_target(adb, serial, "shell", "input", "tap", "512", "528"), capture_output=True)
+                    self.send_json(200, {"ok": True, "message": "Chick-fil-A One opened to Scan on the connected Android tablet."})
+                    return
+                elif app_name == "Jeremiah's Italian Ice":
+                    subprocess.run(adb_target(adb, serial, "shell", "am", "start", "-n", "com.jeremiahsice.app/com.punchhapp.MainActivity"), capture_output=True)
+                    time.sleep(1.2)
+                    subprocess.run(adb_target(adb, serial, "shell", "input", "tap", "60", "965"), capture_output=True)
+                    time.sleep(0.5)
+                    subprocess.run(adb_target(adb, serial, "shell", "input", "tap", "170", "330"), capture_output=True)
+                    time.sleep(1.0)
+                    screencap_dest = "/sdcard/jer_qr_temp.png"
+                    subprocess.run(adb_target(adb, serial, "shell", "screencap", "-p", screencap_dest), capture_output=True)
+                    local_qr = DATA_ROOT / "temp_jer_qr.png"
+                    subprocess.run(adb_target(adb, serial, "pull", screencap_dest, str(local_qr)), capture_output=True)
+                    if local_qr.exists() and local_qr.stat().st_size > 10000:
+                        try:
+                            from PIL import Image
+                            im = Image.open(local_qr)
+                            qr_crop = im.crop((160, 140, 440, 365))
+                            w, h = qr_crop.size
+                            max_dim = max(w, h) + 40
+                            padded = Image.new('RGB', (max_dim, max_dim), (255, 255, 255))
+                            padded.paste(qr_crop, ((max_dim - w) // 2, (max_dim - h) // 2))
+                            temp_clean = DATA_ROOT / "temp_clean_jer.png"
+                            padded.save(temp_clean)
+                            profiles = load_profiles()
+                            jer_prof = next((p for p in profiles if p.get("app") == "Jeremiah's Italian Ice"), None)
+                            if jer_prof:
+                                pid = jer_prof["id"]
+                                (QR_ROOT / f"{pid}.png.dat").write_bytes(base64.b64encode(protect(temp_clean.read_bytes())))
+                                jer_prof["qr_saved"] = True
+                                save_profiles(profiles)
+                            temp_clean.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        finally:
+                            local_qr.unlink(missing_ok=True)
+                    self.send_json(200, {"ok": True, "message": "Jeremiah's Italian Ice opened and EARN POINTS QR synced to wallet."})
+                    return
+                raise ValueError(f"Unknown Android app: {app_name}")
+            if self.path == "/api/android/reset":
+                app_name = str(payload.get("app", "")).strip()
+                serial = str(payload.get("device_serial", "")).strip()
+                if app_name == "Chick-fil-A":
+                    clear_android_app_data("com.chickfila.cfaflagship", "Chick-fil-A", serial)
+                    self.send_json(200, {"ok": True, "message": "Chick-fil-A app data cleared on Android. Saved wallet profiles were kept."})
+                    return
+                elif app_name == "Jeremiah's Italian Ice":
+                    clear_android_app_data("com.jeremiahsice.app", "Jeremiah's Italian Ice", serial)
+                    self.send_json(200, {"ok": True, "message": "Jeremiah's Italian Ice app data cleared on Android. Saved wallet profiles were kept."})
+                    return
+                elif app_name == "Dutch Bros":
+                    clear_android_app_data("com.dutchbros.loyalty", "Dutch Bros", serial)
+                    self.send_json(200, {"ok": True, "message": "Dutch Bros app data cleared on Android. Saved wallet profiles were kept."})
+                    return
+                raise ValueError(f"Unknown Android app: {app_name}")
             if self.path in {"/api/dutch/start", "/api/dutch/resume"}:
                 resume_current = self.path.endswith("/resume")
                 serial = str(payload.get("device_serial", "")).strip()

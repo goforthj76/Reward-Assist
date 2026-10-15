@@ -55,18 +55,18 @@ struct DashboardView: View {
                 VStack(alignment:.leading,spacing:14) {
                     Text("Explore rewards").font(.title2.bold())
                     Link(destination:URL(string:"https://www.chick-fil-a.com/one")!) {
-                        HStack { Image("chickfila").resizable().scaledToFit().frame(width:44,height:44); Text("Chick-fil-A · Android tablet required").font(.headline) }
+                        HStack { Image("chickfila").resizable().scaledToFit().frame(width:44,height:44); Text("Chick-fil-A · Android tablet").font(.headline) }
                     }
                     Divider()
                     Link(destination:URL(string:"https://jeremiahsice.com/rewards/")!) {
-                        HStack { Image("jeremiahs").resizable().scaledToFit().frame(width:44,height:44); Text("Jeremiah's Italian Ice · Android tablet required").font(.headline) }
+                        HStack { Image("jeremiahs").resizable().scaledToFit().frame(width:44,height:44); Text("Jeremiah's Italian Ice · Android tablet").font(.headline) }
                     }
                     Divider()
                     Link(destination:URL(string:"https://my.spendgo.com/sweetfrog")!) { HStack { Image("sweetfrog").resizable().scaledToFit().frame(width:44,height:44); Text("sweetFrog · Website") } }
                     Divider()
                     Link(destination:URL(string:"https://orders.einsteinbros.com/signup")!) { HStack { Image("einstein").resizable().scaledToFit().frame(width:44,height:44); Text("Einstein Bros. Bagels · Website · With purchase") } }
-                    Text("Einstein: free Bagel & Shmear with purchase. Chick-fil-A and Jeremiah’s setup testing requires an Android device.").font(.footnote).foregroundStyle(.secondary)
-                    Text("Sign up through the official program, then add your account and QR screenshot in Wallet. Android setup is awaiting testing. Website tasks run through your connected computer.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Einstein: free Bagel & Shmear with purchase. Chick-fil-A and Jeremiah’s setup runs via your paired Android tablet.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Sign up through the official program, then add your account and QR screenshot in Wallet, or sync with your computer. Android and website tasks run seamlessly.").font(.footnote).foregroundStyle(.secondary)
                 }.padding(20).background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:20))
                 Text("Pinned for checkout").font(.title2.bold())
                 let pinned=wallet.cards.filter(\.favorite)

@@ -66,9 +66,9 @@ struct RemoteTasksView: View {
             }
             Section("New account setup") {
                 Picker("Restaurant", selection:$app) {
-                    ForEach(["Einstein Bros. Bagels","sweetFrog","Nothing Bundt Cakes","The Cheesecake Factory","Taco Bell","Dutch Bros"],id: \.self) { Text($0) }
+                    ForEach(["Einstein Bros. Bagels","sweetFrog","Nothing Bundt Cakes","The Cheesecake Factory","Taco Bell","Dutch Bros","Chick-fil-A","Jeremiah's Italian Ice"],id: \.self) { Text($0) }
                 }
-                Text("Paste the same single-person details block used on the desktop. Dutch Bros needs an attached Android device. Taco Bell continues on the connected Android. Payment setup or unexpected device prompts may need attention there.").font(.footnote)
+                Text("Paste the same single-person details block used on the desktop. Dutch Bros, Chick-fil-A, and Jeremiah's need an attached Android device. Taco Bell continues on the connected Android. Payment setup or unexpected device prompts may need attention there.").font(.footnote)
                 if app == "Nothing Bundt Cakes" { Text("Allow about 2 hours after confirmed signup before checking the reward. Sync your wallet after completion to start its countdown and local reminder.").font(.footnote).foregroundStyle(.secondary) }
                 Text("For programs requiring a password, add password: YOUR_PASSWORD before END. sweetFrog uses verification codes and does not need a password.").font(.footnote).foregroundStyle(.secondary)
                 TextEditor(text:$details).frame(minHeight:140).textInputAutocapitalization(.never).autocorrectionDisabled()
