@@ -265,7 +265,7 @@ class SetupWindow:
             (INSTALL_ROOT / "SETUP-GUIDE.txt").write_text(
                 "Reward Assist setup\n\nChrome extension\nOpen chrome://extensions in Chrome. Enable Developer mode, click Load unpacked, and select:\n"
                 + str(EXTENSION_ROOT)
-                + "\nConfirm Rewards Assistant Helper is enabled. If it is already listed, click its Reload button.\n\nAndroid\nInstall the official restaurant apps you plan to use from Google Play. Enable Developer options by tapping Build number seven times in Settings > About phone (the location varies by device). Enable USB debugging in Developer options. Connect a data-capable USB cable, unlock the device and allow the USB debugging prompt.\n\nKeep the device unlocked while using Reward Assist. If Windows cannot see it, install the USB driver provided by the device manufacturer.\n",
+                + "\nConfirm Rewards Assistant Helper is enabled. If it is already listed, click its Reload button.\n\nAndroid\nInstall the official restaurant apps you plan to use from Google Play (Chick-fil-A, Taco Bell, Dutch Bros, Jeremiah's Italian Ice, Paris Baguette). Enable Developer options by tapping Build number seven times in Settings > About phone (the location varies by device). Enable USB debugging in Developer options. Connect a data-capable USB cable, unlock the device and allow the USB debugging prompt.\n\nKeep the device unlocked while using Reward Assist. If Windows cannot see it, install the USB driver provided by the device manufacturer.\n",
                 encoding="utf-8")
             self.show_setup_guide()
         except Exception as exc:
@@ -335,23 +335,41 @@ class SetupWindow:
         if self.guide_step == 0:
             self.guide_text("1. Enable the included Chrome extension", True)
             self.guide_text("Needed for website signup. The extension files are installed, but Chrome requires you to enable them once.")
-            self.guide_text("Open Extensions → turn on Developer mode → Load unpacked → select the folder below. If Rewards Assistant Helper is already listed, click Reload and make sure it is enabled.")
+            self.guide_text("Click '⚡ 1-Click: Copy Path & Open Chrome' below. In Chrome: turn on Developer mode (top right) → click 'Load unpacked' → press Ctrl+V to paste the path → press Enter. If Rewards Assistant Helper is already listed, click Reload.")
             path_field = tk.Entry(self.guide_frame, readonlybackground="#f1f6fa", width=72)
             path_value = tk.StringVar(value=str(EXTENSION_ROOT))
             path_field.configure(textvariable=path_value, state="readonly")
             path_field.path_value = path_value
             path_field.pack(fill="x", pady=8)
-            tk.Button(self.guide_frame, text="Open installed extension folder", command=self.open_extension_folder).pack(anchor="w", pady=4)
-            tk.Button(self.guide_frame, text="Open Chrome Extensions", command=self.open_extensions).pack(anchor="w", pady=4)
-            tk.Button(self.guide_frame, text="Copy extension folder path", command=self.copy_extension_path).pack(anchor="w", pady=4)
+
+            def one_click_chrome():
+                self.copy_extension_path()
+                self.open_extensions()
+                self.guide_status.set("Copied to clipboard & opened Chrome!\nIn Chrome: Developer mode -> Load unpacked -> Ctrl+V -> Enter.")
+
+            one_click_btn = tk.Button(
+                self.guide_frame,
+                text="⚡ 1-Click: Copy Path & Open Chrome",
+                command=one_click_chrome,
+                bg="#07152f", fg="white", activebackground="#132c53", activeforeground="white",
+                font=("Segoe UI", 10, "bold"), padx=12, pady=6, cursor="hand2"
+            )
+            one_click_btn.pack(anchor="w", pady=(4, 6))
+
+            btn_row = tk.Frame(self.guide_frame, bg="white")
+            btn_row.pack(anchor="w", pady=2)
+            tk.Button(btn_row, text="Open extension folder", command=self.open_extension_folder).pack(side="left", padx=(0, 6))
+            tk.Button(btn_row, text="Open Chrome Extensions", command=self.open_extensions).pack(side="left", padx=(0, 6))
+            tk.Button(btn_row, text="Copy folder path", command=self.copy_extension_path).pack(side="left")
             self.guide_text("Chrome: " + ("installed" if find_chrome() else "missing") + "   •   ADB: " + ("installed" if find_adb() else "missing"))
         elif self.guide_step == 1:
             self.guide_text("2. Connect your Android device", True)
             self.guide_text("In Android Settings → About phone, tap Build number seven times (its location varies). Then open Developer options and enable USB debugging.")
             self.guide_text("Connect a data-capable USB cable. Unlock the device and tap Allow on its USB debugging prompt. Keep it unlocked while the assistant runs.")
-            self.guide_text("Install the official Taco Bell, Dutch Bros, or Paris Baguette app from Google Play—only the programs you plan to use.")
+            self.guide_text("Install the official Chick-fil-A, Taco Bell, Dutch Bros, Jeremiah's Italian Ice, or Paris Baguette app from Google Play—only the programs you plan to use.")
             self.check_button = tk.Button(self.guide_frame, text="Check device and installed apps", command=self.check_android)
             self.check_button.pack(anchor="w", pady=8)
+            self.root.after(300, self.check_android)
         else:
             self.guide_text("3. Ready to open Reward Assist", True)
             self.guide_text("Before starting signup, make sure the Chrome helper is enabled and your Android device is connected and authorized. Checks do not automatically verify that the extension is enabled.")

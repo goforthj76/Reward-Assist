@@ -33,7 +33,13 @@ def inspect_android(adb):
             reports.append(f'{serial}: {state}. Unlock the device and allow USB debugging; reconnect if offline.')
             continue
         packages = set(run('-s', serial, 'shell', 'pm', 'list', 'packages').splitlines())
-        apps = [('Taco Bell', 'com.tacobell.ordering'), ('Dutch Bros', 'com.dutchbros.loyalty'), ('Paris Baguette', 'com.parisbaguette.app')]
+        apps = [
+            ('Chick-fil-A', 'com.chickfila.cfaflagship'),
+            ('Taco Bell', 'com.tacobell.ordering'),
+            ('Dutch Bros', 'com.dutchbros.loyalty'),
+            ("Jeremiah's Italian Ice", 'com.jeremiahsice.app'),
+            ('Paris Baguette', 'com.parisbaguette.app'),
+        ]
         reports.append(f'{serial}: connected and authorized.\n' + '\n'.join(
             f'  {name}: ' + ('installed' if 'package:' + package in packages else 'install from Google Play if you will use it')
             for name, package in apps))

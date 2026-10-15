@@ -1979,13 +1979,59 @@ def main() -> None:
                         from tkinter import messagebox
                         notice = tk.Tk()
                         notice.withdraw()
-                        messagebox.showwarning("Close the older Reward Assist", f"Reward Assist {running['version']} is still running. This copy is {BUILD_VERSION}.\n\nClose the older app completely, then open this copy again. If it stays running in the background, restart Windows. Your saved profiles will not be deleted.", parent=notice)
+                        restart = messagebox.askyesno(
+                            "Reward Assist Update",
+                            f"Reward Assist {running['version']} is running in the background.\n\n"
+                            f"Would you like to close it and start this version ({BUILD_VERSION}) now?",
+                            parent=notice,
+                        )
                         notice.destroy()
+                        if restart:
+                            for proc_name in ["Reward Assist.exe", "Rewards Assistant.exe"]:
+                                try:
+                                    subprocess.run(["taskkill", "/F", "/T", "/IM", proc_name], capture_output=True, timeout=5)
+                                except Exception:
+                                    pass
+                            time.sleep(1.2)
+                            try:
+                                server = ExclusiveThreadingHTTPServer((HOST, PORT), Handler)
+                                break
+                            except OSError:
+                                pass
                         return
                     open_local_ui()
                     return
             except (OSError, ValueError):
                 pass
+
+            # Port 8768 is occupied by an unyielding or zombie background process
+            try:
+                import tkinter as tk
+                from tkinter import messagebox
+                notice = tk.Tk()
+                notice.withdraw()
+                kill_and_retry = messagebox.askyesno(
+                    "Reward Assist Port Occupied",
+                    "Port 8768 is in use by an existing background process.\n\n"
+                    "Would you like to close existing Reward Assist processes and start fresh?",
+                    parent=notice,
+                )
+                notice.destroy()
+                if kill_and_retry:
+                    for proc_name in ["Reward Assist.exe", "Rewards Assistant.exe"]:
+                        try:
+                            subprocess.run(["taskkill", "/F", "/T", "/IM", proc_name], capture_output=True, timeout=5)
+                        except Exception:
+                            pass
+                    time.sleep(1.2)
+                    try:
+                        server = ExclusiveThreadingHTTPServer((HOST, PORT), Handler)
+                        break
+                    except OSError:
+                        pass
+            except Exception:
+                pass
+
             raise OSError("Reward Assist's connection is occupied. Close the existing app and try again.") from exc
     if server is None:
         raise OSError("Reward Assist could not find an available local port. Close old Reward Assist windows and retry.")
