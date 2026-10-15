@@ -65,8 +65,9 @@ struct DashboardView: View {
                     Link(destination:URL(string:"https://my.spendgo.com/sweetfrog")!) { HStack { Image("sweetfrog").resizable().scaledToFit().frame(width:44,height:44); Text("sweetFrog · Website") } }
                     Divider()
                     Link(destination:URL(string:"https://orders.einsteinbros.com/signup")!) { HStack { Image("einstein").resizable().scaledToFit().frame(width:44,height:44); Text("Einstein Bros. Bagels · Website · With purchase") } }
-                    Text("Einstein: free Bagel & Shmear with purchase. Chick-fil-A and Jeremiah’s setup runs via your paired Android tablet.").font(.footnote).foregroundStyle(.secondary)
-                    Text("Sign up through the official program, then add your account and QR screenshot in Wallet, or sync with your computer. Android and website tasks run seamlessly.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Chick-fil-A: Enter your birthday at least 2 days in advance for the birthday reward (valid 30 days). Autonomous checkout and sync run via your paired Android tablet.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Einstein: free Bagel & Shmear with purchase. Jeremiah’s points QR syncs automatically from the tablet.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Sign up through the official program, then add your account and QR screenshot in Wallet, or sync with your computer. Multi-account batches run autonomously.").font(.footnote).foregroundStyle(.secondary)
                 }.padding(20).background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:20))
                 Text("Pinned for checkout").font(.title2.bold())
                 let pinned=wallet.cards.filter(\.favorite)

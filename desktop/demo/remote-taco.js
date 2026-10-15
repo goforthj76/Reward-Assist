@@ -27,6 +27,13 @@ class PhoneTacoFlow {
     await this.post('prepare',{plan:{...this.plan,checkout_confirmed:true}});
     const payment=await this.post('payment',{payment_method:this.plan.payment_method});
     if(!payment.payment_ready)throw Error(payment.message || 'Payment needs configuration on Android.');
+    if(this.plan.auto_submit) {
+      this.phase='submitting';
+      const s=await this.post('submit',{payment_method:this.plan.payment_method,submit_confirmed:true});
+      await this.post('reset',{previous_person_finished:true});
+      this.phase='submission_attempted';
+      return {stage:'complete',message:s.message + ' Order submitted and Android app data cleared automatically.'};
+    }
     const review=await this.post('review');
     this.reviewText=review.text;
     this.phase='checkout_review';

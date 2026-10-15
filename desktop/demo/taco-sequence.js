@@ -33,8 +33,9 @@ async function startTacoSequence() {
       if (!/^[0-9]{1,32}$/.test(number) || !/^(?:[0-9]{3}|[0-9]{8})$/.test(pin)) throw new Error('Each supplied gift card needs a numeric number and a 3- or 8-digit PIN.');
       return {number, pin};
     });
+    const autoSubmit = sequenceElement('autoPlaceOrder').checked;
     tacoSequence = {people, cards, paymentMethod, details:details.map(text => text + '\nEND'), index:0,
-      serial:sequenceElement('deviceSelect').value, stage:'ready'};
+      serial:sequenceElement('deviceSelect').value, stage:'ready', autoSubmit};
     sequenceLock(true);
     await startSequencePerson();
   } catch (error) {
@@ -48,7 +49,7 @@ async function startSequencePerson() {
   if (tacoSequenceBusy || !tacoSequence) return;
   resetAndroidCode();
   sequenceElement('checkTacoPayment').hidden = true;
-  if (tacoSequence.index > 0) sequenceElement("autoPlaceOrder").checked = false;
+  if (tacoSequence.autoSubmit) sequenceElement("autoPlaceOrder").checked = true;
   tacoSequenceBusy = true;
   const run = tacoSequence, person = run.people[run.index];
   if (statusTimer) clearInterval(statusTimer);
@@ -104,7 +105,6 @@ async function nextTacoPerson() {
   if (!tacoSequence || tacoSequenceBusy || preparingTacoOrder) return;
   if (tacoSequence.stage === 'retry') return startSequencePerson();
   if (!['checkout','payment','review'].includes(tacoSequence.stage)) return;
-  if (!confirm('Has this person finished? Verify their order was placed or cancelled in Taco Bell. Sign out of their account on the Taco Bell website. Continuing to another person will clear Taco Bell’s Android app data and sign out the previous person.')) return;
   if (tacoSequence.index + 1 === tacoSequence.people.length) {
     if (await endTacoSequence()) notify('Everyone in this group is finished.');
     return;
@@ -142,8 +142,8 @@ async function prepareTacoOrder() {
     if (!serial || !plan.location || !plan.reward) throw new Error('Choose an Android device, reward, and pickup location.');
     if (plan.item) throw new Error('Additional menu items are not supported by this helper. Clear that field first.');
     resetAndroidCode();
-    const autoSubmit = sequenceElement('autoPlaceOrder').checked;
-    sequenceElement('autoPlaceOrder').checked = false;
+    const autoSubmit = tacoSequence ? tacoSequence.autoSubmit : sequenceElement('autoPlaceOrder').checked;
+    if (!tacoSequence) sequenceElement('autoPlaceOrder').checked = false;
     preparingTacoOrder = true;
     sequenceElement('automationPanel').style.display = 'block';
     sequenceElement('automationStatus').textContent = 'Preparing this person’s checkout…';
@@ -159,6 +159,22 @@ async function prepareTacoOrder() {
     if (payment.payment_ready && autoSubmit) {
       const submitted = await api('/api/taco/submit', {method:'POST',body:JSON.stringify({device_serial:serial,submit_confirmed:true,payment_method:plan.payment_method})});
       result.message = submitted.message;
+      if (tacoSequence) {
+        sequenceElement('automationStatus').textContent = `${result.message} Automatically clearing Taco Bell data for next account…`;
+        sequenceMessage(`${result.message} Clearing Android data for next account…`);
+        await api('/api/taco/reset', {method:'POST', body:JSON.stringify({device_serial:serial, previous_person_finished:true})});
+        tacoSequence.index += 1;
+        if (tacoSequence.index < tacoSequence.people.length) {
+          tacoSequence.stage = 'ready';
+          setTimeout(() => startSequencePerson(), 1200);
+          return;
+        } else {
+          await endTacoSequence();
+          sequenceElement('automationStatus').textContent = 'All accounts completed and orders submitted autonomously!';
+          notify('All accounts completed and orders submitted autonomously!');
+          return;
+        }
+      }
     }
     if (payment.payment_ready && tacoSequence) {
       tacoSequence.stage = 'review';

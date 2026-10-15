@@ -202,6 +202,12 @@ struct CardDetail: View {
                     if let date=card.rewardCheckAt { RewardCountdown(date:date); Text("Allow about 2 hours after signup, then check the official reward. This timer does not confirm issuance or eligibility.").font(.footnote) }
                     if let date=card.expiresAt {LabeledContent("Expires",value:date.formatted(date:.abbreviated,time:.omitted))}
                     if let date=card.birthday {LabeledContent("Birthday",value:date.formatted(.dateTime.month().day()))}
+                    if card.name.localizedCaseInsensitiveContains("chick-fil-a") {
+                        VStack(alignment:.leading, spacing:4) {
+                            Label("2-Day Advance Notice Required", systemImage:"clock.badge.exclamationmark.fill").font(.caption.bold()).foregroundStyle(.red)
+                            Text("Chick-fil-A requires birthdays to be entered at least 2 days prior to receive the annual birthday reward (valid for 30 days).").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     if !card.email.isEmpty { LabeledContent("Email",value:card.email).textSelection(.enabled) }
                     if !card.memberID.isEmpty { LabeledContent("Membership",value:card.memberID).textSelection(.enabled) }
                     if !card.notes.isEmpty {Text(card.notes).textSelection(.enabled)}

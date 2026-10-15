@@ -23,6 +23,7 @@ struct RemoteTasksView: View {
     @State private var serial = ""
     @State private var cardNumber = ""
     @State private var cardPIN = ""
+    @State private var autoSubmit = true
     @State private var acceptedReviews: Set<String> = []
     @AppStorage("remoteWakeMac") private var wakeMac = ""
     @AppStorage("remoteWakeIP") private var wakeIP = ""
@@ -68,7 +69,32 @@ struct RemoteTasksView: View {
                 Picker("Restaurant", selection:$app) {
                     ForEach(["Einstein Bros. Bagels","sweetFrog","Nothing Bundt Cakes","The Cheesecake Factory","Taco Bell","Dutch Bros","Chick-fil-A","Jeremiah's Italian Ice"],id: \.self) { Text($0) }
                 }
-                Text("Paste the same single-person details block used on the desktop. Dutch Bros, Chick-fil-A, and Jeremiah's need an attached Android device. Taco Bell continues on the connected Android. Payment setup or unexpected device prompts may need attention there.").font(.footnote)
+                Text("Paste single or multiple details blocks ending with END. Dutch Bros, Chick-fil-A, and Jeremiah's need an attached Android device. Taco Bell continues on Android.").font(.footnote)
+                if app == "Chick-fil-A" {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("2-Day Advance Notice Required", systemImage: "clock.badge.exclamationmark.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.red)
+                        Text("Chick-fil-A requires birthdays to be saved at least 2 days before your birthday to issue the annual birthday reward. Once granted, rewards remain valid for 30 days.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                    TextField("Pickup address or ZIP (e.g. Flower Mound, TX / 75022)", text: $location)
+                    Picker("Pickup method", selection: $pickupMethod) {
+                        Text("Drive-thru").tag("Drive-thru")
+                        Text("Carry-out").tag("Carry-out")
+                        Text("Curbside").tag("Curbside")
+                    }
+                    Picker("Reward item", selection: $reward) {
+                        ForEach(["Chick-fil-A® Chicken Sandwich", "8 Ct Chick-fil-A® Nuggets", "Chocolate Chunk Cookie", "Fudge Brownie", "Small Waffle Potato Fries®"], id: \.self) { Text($0) }
+                    }
+                    Toggle("Autonomous checkout & auto-clear storage", isOn: $autoSubmit)
+                    TextField("Android serial (optional with one phone)", text: $serial)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("Supports multiple account blocks separated by END. The assistant autonomously places orders and clears app storage between accounts without manual prompts.").font(.footnote).foregroundStyle(.secondary)
+                }
                 if app == "Nothing Bundt Cakes" { Text("Allow about 2 hours after confirmed signup before checking the reward. Sync your wallet after completion to start its countdown and local reminder.").font(.footnote).foregroundStyle(.secondary) }
                 Text("For programs requiring a password, add password: YOUR_PASSWORD before END. sweetFrog uses verification codes and does not need a password.").font(.footnote).foregroundStyle(.secondary)
                 TextEditor(text:$details).frame(minHeight:140).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -79,8 +105,9 @@ struct RemoteTasksView: View {
                     Picker("Reward",selection:$reward) { ForEach(["Soft Taco","Cantina Chicken Crispy Taco","Beefy 5-Layer Burrito"],id: \.self) { Text($0) } }
                     Picker("Payment",selection:$payment) { Text("Venmo").tag("venmo"); Text("Gift Card").tag("gift_card") }
                     if payment == "gift_card" { SecureField("Gift card number",text:$cardNumber); SecureField("Gift card PIN",text:$cardPIN) }
+                    Toggle("Autonomous checkout & auto-clear storage", isOn: $autoSubmit)
                     TextField("Android serial (optional with one phone)",text:$serial).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Text("The store search selects its first result. Review the actual store, items and total before placing the order. Venmo must already be configured on Android.").font(.footnote)
+                    Text("Multi-account batches separated by END are supported. When autonomous checkout is enabled, orders are placed and storage is reset automatically.").font(.footnote)
                 }
                 Toggle("I authorize this account setup and the form submission using these details",isOn:$confirmed)
                 Button("Start on computer") { Task { await submit() } }.disabled(busy || device.isEmpty || details.isEmpty || !confirmed)
@@ -149,9 +176,20 @@ struct RemoteTasksView: View {
         busy = true
         do {
             var content: [String:Any] = ["app":app,"details":details,"confirmed":confirmed]
+            if app == "Chick-fil-A" {
+                let loc = location.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? "75022" : location
+                let plan: [String:Any] = [
+                    "location": loc,
+                    "pickup_method": pickupMethod,
+                    "reward": reward,
+                    "auto_submit": autoSubmit
+                ]
+                content["cfa_plan"] = plan
+                content["android_serial"] = serial
+            }
             if app == "Taco Bell" {
                 guard !location.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else {message="Enter a pickup address or ZIP.";busy=false;return}
-                var plan: [String:Any] = ["location":location,"pickup_time":pickupTime,"pickup_method":pickupMethod,"reward":reward,"payment_method":payment]
+                var plan: [String:Any] = ["location":location,"pickup_time":pickupTime,"pickup_method":pickupMethod,"reward":reward,"payment_method":payment,"auto_submit":autoSubmit]
                 if payment == "gift_card" && !cardNumber.isEmpty { plan["gift_card"]=["number":cardNumber,"pin":cardPIN] }
                 content["taco_plan"]=plan;content["android_serial"]=serial
             }

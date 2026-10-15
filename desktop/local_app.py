@@ -67,7 +67,7 @@ WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
 HOST, PORT = "127.0.0.1", 8768
-BUILD_VERSION = "0.5.44"
+BUILD_VERSION = "0.5.45"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
 RELAY_POLL_SECONDS = 5.0
@@ -578,6 +578,87 @@ def prepare_taco_order(serial: str, plan: dict[str, object]) -> dict[str, object
     card_message = apply_gift_card(adb, serial, card, _taco_ui, _taco_tap, _bounds_center)
     return {"ok": True, "stage": "final_review", "message":
             f"{reward} is prepared for {pickup_method} at {location}, pickup {requested_time}. " + (card_message or "Total and store are visible for review. Add any required payment method in Taco Bell.") + " PLACE ORDER was not pressed."}
+
+
+def _cfa_ui(adb: str, serial: str) -> ET.Element:
+    screendump = f"/sdcard/cfa_ui_{uuid.uuid4().hex[:8]}.xml"
+    run_hidden(adb_target(adb, serial, "shell", "uiautomator", "dump", screendump), check=True, timeout=20)
+    xml_data = run_hidden(adb_target(adb, serial, "shell", "cat", screendump), check=True, capture_output=True, text=True, timeout=15).stdout
+    run_hidden(adb_target(adb, serial, "shell", "rm", "-f", screendump), timeout=10)
+    return ET.fromstring(xml_data)
+
+
+def _cfa_tap(adb: str, serial: str, *, text: str = "", desc: str = "", resource_id: str = "") -> bool:
+    try:
+        root = _cfa_ui(adb, serial)
+        for node in root.iter("node"):
+            n_text = node.attrib.get("text", "")
+            n_desc = node.attrib.get("content-desc", "")
+            n_id = node.attrib.get("resource-id", "")
+            if (text and text.lower() in n_text.lower()) or (desc and desc.lower() in n_desc.lower()) or (resource_id and resource_id in n_id):
+                bounds = node.attrib.get("bounds", "")
+                if bounds:
+                    m = list(map(int, re.findall(r"\d+", bounds)))
+                    if len(m) == 4:
+                        x, y = (m[0] + m[2]) // 2, (m[1] + m[3]) // 2
+                        run_hidden(adb_target(adb, serial, "shell", "input", "tap", str(x), str(y)), check=True, timeout=10)
+                        time.sleep(1.2)
+                        return True
+    except Exception:
+        pass
+    return False
+
+
+def prepare_cfa_order(serial: str, plan: dict[str, object]) -> dict[str, object]:
+    adb = find_adb()
+    if not adb:
+        raise ValueError("ADB is not installed or available.")
+    adb_wake_device(serial)
+    package = "com.chickfila.cfaflagship"
+    run_hidden(adb_target(adb, serial, "shell", "monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1"), check=True, timeout=15)
+    time.sleep(2.0)
+    location = str(plan.get("location", "75022")).strip() or "75022"
+    pickup_method = str(plan.get("pickup_method", "Drive-thru")).strip()
+    reward = str(plan.get("reward", "")).strip()
+    auto_submit = bool(plan.get("auto_submit", False))
+    _cfa_tap(adb, serial, desc="Menu tab 1 of 5") or _cfa_tap(adb, serial, text="Menu")
+    time.sleep(1.0)
+    if not _cfa_tap(adb, serial, desc="Start pickup order"):
+        _cfa_tap(adb, serial, text="Start pickup order")
+    time.sleep(1.5)
+    if _cfa_tap(adb, serial, desc="Search restaurants"):
+        time.sleep(1.0)
+        for char in location:
+            token = "%s" if char == " " else char
+            run_hidden(adb_target(adb, serial, "shell", "input", "text", token), timeout=10)
+        run_hidden(adb_target(adb, serial, "shell", "input", "keyevent", "66"), timeout=10)
+        time.sleep(2.0)
+    if not _cfa_tap(adb, serial, text="View menu"):
+        _cfa_tap(adb, serial, desc="Stand-alone")
+        time.sleep(1.0)
+        _cfa_tap(adb, serial, text="View menu")
+    time.sleep(1.5)
+    if pickup_method:
+        _cfa_tap(adb, serial, text=pickup_method) or _cfa_tap(adb, serial, desc=pickup_method)
+    time.sleep(1.0)
+    if reward:
+        _cfa_tap(adb, serial, text=reward) or _cfa_tap(adb, serial, desc=reward)
+        time.sleep(1.0)
+        _cfa_tap(adb, serial, text="Add to order") or _cfa_tap(adb, serial, desc="Add to order")
+    _cfa_tap(adb, serial, desc="Your Order tab 5 of 5") or _cfa_tap(adb, serial, text="Your Order")
+    time.sleep(1.5)
+    if auto_submit:
+        return submit_cfa_order(serial)
+    return {"ok": True, "stage": "ready_for_review", "message": f"Chick-fil-A order prepared for {pickup_method} at {location}."}
+
+
+def submit_cfa_order(serial: str) -> dict[str, object]:
+    adb = find_adb()
+    if not adb:
+        raise ValueError("ADB is not installed.")
+    _cfa_tap(adb, serial, text="Place order") or _cfa_tap(adb, serial, desc="Place order") or _cfa_tap(adb, serial, text="Submit order")
+    time.sleep(2.0)
+    return {"ok": True, "stage": "order_submitted", "message": "Chick-fil-A order submitted successfully on Android."}
 
 
 def device_status(serial: str = "") -> dict[str, object]:
@@ -1315,6 +1396,10 @@ class Handler(SimpleHTTPRequestHandler):
                     clear_android_app_data("com.dutchbros.loyalty", "Dutch Bros", serial)
                     self.send_json(200, {"ok": True, "message": "Dutch Bros app data cleared on Android. Saved wallet profiles were kept."})
                     return
+                elif app_name == "Taco Bell":
+                    clear_android_app_data("com.tacobell.ordering", "Taco Bell", serial)
+                    self.send_json(200, {"ok": True, "message": "Taco Bell app data cleared on Android. Saved wallet profiles were kept."})
+                    return
                 raise ValueError(f"Unknown Android app: {app_name}")
             if self.path in {"/api/dutch/start", "/api/dutch/resume"}:
                 resume_current = self.path.endswith("/resume")
@@ -1659,6 +1744,44 @@ class Handler(SimpleHTTPRequestHandler):
                 finally:
                     TACO_CHECKOUT_LOCK.release()
                 self.send_json(200 if result.get("ok") else 409, result)
+                return
+            if self.path == "/api/cfa/prepare":
+                serial = str(payload.get("device_serial", "")).strip()
+                plan = payload.get("plan")
+                if not isinstance(plan, dict):
+                    raise ValueError("A Chick-fil-A order plan is required.")
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("An Android action is already running. Wait for it to finish.")
+                try:
+                    result = prepare_cfa_order(serial, plan)
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200 if result.get("ok") else 409, result)
+                return
+            if self.path == "/api/cfa/submit":
+                serial = str(payload.get("device_serial", "")).strip()
+                if not serial:
+                    raise ValueError("Device serial is required.")
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("An Android action is already running. Wait for it to finish.")
+                try:
+                    result = submit_cfa_order(serial)
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200 if result.get("ok") else 409, result)
+                return
+            if self.path == "/api/cfa/reset":
+                serial = str(payload.get("device_serial", "")).strip()
+                if not serial:
+                    raise ValueError("Device serial is required.")
+                if not TACO_CHECKOUT_LOCK.acquire(blocking=False):
+                    raise ValueError("Wait for the current Android step to finish.")
+                try:
+                    clear_android_app_data("com.chickfila.cfaflagship", "Chick-fil-A", serial)
+                    adb_sleep_device(serial)
+                finally:
+                    TACO_CHECKOUT_LOCK.release()
+                self.send_json(200, {"ok": True, "message": "Chick-fil-A Android data cleared for the next person."})
                 return
             if self.path == "/api/extension/status":
                 app = str(payload.get("app", ""))

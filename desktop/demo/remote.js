@@ -1,6 +1,6 @@
 // Opt-in foreground companion. No shell commands or arbitrary URLs are accepted.
 (() => {
-  const allowed=new Set(['Einstein Bros. Bagels','sweetFrog','Taco Bell','Dutch Bros','Nothing Bundt Cakes','The Cheesecake Factory',"Wendy's"]);
+  const allowed=new Set(['Einstein Bros. Bagels','sweetFrog','Taco Bell','Dutch Bros','Nothing Bundt Cakes','The Cheesecake Factory',"Wendy's",'Chick-fil-A']);
   let enabled=false, busy=false, active=null;
   const device=localStorage.rewardAssistComputerID || crypto.randomUUID();
   localStorage.rewardAssistComputerID=device;
@@ -36,7 +36,7 @@
       if(enabled)await call('heartbeat');
       const remoteState=await cloudApi('/api/remote');
       if(active && remoteState.jobs.find(j=>j.id===active.id)?.cancel_requested){
-        if(active.app==='Dutch Bros' || (active.taco && active.taco.phase!=='web')){status.textContent='Cancellation requested. Check and stop the Android task on the computer before clearing this request.';return}
+        if(active.app==='Dutch Bros' || active.app==='Chick-fil-A' || (active.taco && active.taco.phase!=='web')){status.textContent='Cancellation requested. Check and stop the Android task on the computer before clearing this request.';return}
         await api('/api/web/cancel',{method:'POST',body:JSON.stringify({app:active.app})});
         await call('update',{id:active.id,stage:'cancelled'});active=null;status.textContent='Task cancelled. Already-submitted actions are not undone.';return;
       }
@@ -51,6 +51,14 @@
         try{
           const input=await cloudDecrypt(job.payload);
           if(!allowed.has(input.app)||typeof input.details!=='string'||input.details.length>20000||input.confirmed!==true)throw Error('Invalid phone request');
+          if(input.app==='Chick-fil-A'){
+            active={id:job.id,app:input.app};
+            active.cfa=new PhoneCfaFlow(input,api);
+            await active.cfa.validate();
+            await call('update',{id:job.id,stage:'running'});
+            active.state=await active.cfa.start();
+            return;
+          }
           const current=await api(input.app==='Dutch Bros'?'/api/dutch/status':'/api/web/status?app='+encodeURIComponent(input.app));
           if(current.stage && !['idle','complete','attention','error','failed','stopped'].includes(current.stage))throw Error('Finish the existing task on this computer first');
           active={id:job.id,app:input.app};

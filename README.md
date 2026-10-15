@@ -1,8 +1,8 @@
-# Reward Assist
+﻿# Reward Assist
 
 Reward Assist brings account details, reward QR cards and birthday reminders together with a native iPhone wallet and a Windows companion for supported website and Android setup.
 
-**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.44)
+**[Download Reward Assist](https://goforthj76.github.io/Reward-Assist/)** · [Release notes](https://github.com/goforthj76/Reward-Assist/releases/tag/v0.5.45)
 
 ## Repository layout
 
@@ -20,12 +20,12 @@ Local profiles and QR snapshots are intentionally excluded from Git. Optional Ta
 
 Run `desktop/build.ps1` from PowerShell on Windows. Generated build directories, virtual environments, browser downloads, and user data remain untracked.
 
-## Current preview: Windows 0.5.44 / iPhone 0.3.8 (build 17)
+## Current preview: Windows 0.5.45 / iPhone 0.3.9 (build 18)
 
-[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.44/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.44/Reward-Assist.ipa)
+[Download Windows installer](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.45/Reward-Assist-Setup.exe) · [Download iPhone IPA](https://github.com/goforthj76/Reward-Assist/releases/download/v0.5.45/Reward-Assist.ipa)
 
 1. Close Reward Assist on Windows and run the installer.
-2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.44**. First-time users should follow the installer's Load unpacked instructions.
+2. Reload Rewards Assistant Helper at `chrome://extensions` and confirm **0.5.45**. First-time users should follow the installer's Load unpacked instructions.
 3. Import the direct IPA into your compatible sideloading tool. It is a preview, not an App Store installation.
 4. Sign into the same Reward Assist account on both devices. Enable **Allow phone requests** in the Windows **Phone connection** tab, then choose your computer on iPhone.
 
@@ -112,3 +112,4 @@ Use the exact country, state and bakery names from the official website. Passwor
 ### Cheesecake Factory website beta
 
 Use one details block with first_name, last_name, email, phone, zip_code, birthday (YYYY-MM-DD), password, and restaurant. Example restaurant: `The Shops at Highland Village (Highland Village, TX)`. MAIN requests one SMS code; enter it in Assistant status. The helper fills the profile and selects the exact restaurant. Review the official terms and promotional email/SMS consent before approving creation. Sign Up is clicked once; a 400 error stops for attention. Account completion is not automatically confirmed or saved yet. Password and SMS code remain in a short-lived memory session, not session files. Reload the updated Chrome extension after installation.
+
