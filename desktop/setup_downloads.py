@@ -8,7 +8,9 @@ import tempfile
 from urllib.request import urlopen
 import zipfile
 
-PLATFORM_URL = 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip'
+PLATFORM_URL_WINDOWS = 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip'
+PLATFORM_URL_LINUX = 'https://dl.google.com/android/repository/platform-tools-latest-linux.zip'
+PLATFORM_URL = PLATFORM_URL_WINDOWS if os.name == 'nt' else PLATFORM_URL_LINUX
 APP_INSTALLER_URL = 'https://aka.ms/getwinget'
 
 
@@ -33,7 +35,10 @@ def unpack_platform_tools(archive, sdk_root):
                     or ':' in item.filename or not path.parts or path.parts[0] != 'platform-tools'
                     or (item.external_attr >> 16) & 0o170000 == 0o120000):
                 raise RuntimeError('Invalid Platform-Tools archive path.')
-        required = {'platform-tools/adb.exe', 'platform-tools/AdbWinApi.dll', 'platform-tools/AdbWinUsbApi.dll'}
+        if os.name == 'nt':
+            required = {'platform-tools/adb.exe', 'platform-tools/AdbWinApi.dll', 'platform-tools/AdbWinUsbApi.dll'}
+        else:
+            required = {'platform-tools/adb'}
         if not required.issubset(bundle.namelist()) or sum(i.file_size for i in bundle.infolist()) > 500 * 1024 * 1024:
             raise RuntimeError('Platform-Tools download is incomplete or invalid.')
         with tempfile.TemporaryDirectory(prefix='reward-adb-') as folder:
@@ -42,7 +47,14 @@ def unpack_platform_tools(archive, sdk_root):
             if sdk_root.is_symlink() or target.is_symlink():
                 raise RuntimeError('Android tools destination is a symbolic link; select a standard installation.')
             shutil.copytree(Path(folder) / 'platform-tools', target, dirs_exist_ok=True)
-    return sdk_root / 'platform-tools' / 'adb.exe'
+    binary_name = 'adb.exe' if os.name == 'nt' else 'adb'
+    target_adb = sdk_root / 'platform-tools' / binary_name
+    if os.name != 'nt' and target_adb.is_file():
+        try:
+            target_adb.chmod(0o755)
+        except Exception:
+            pass
+    return target_adb
 
 
 def install_adb(status):
@@ -51,11 +63,12 @@ def install_adb(status):
         archive = Path(folder) / 'platform-tools.zip'
         download(PLATFORM_URL, archive)
         status('Extracting Android tools—no manual folder setup needed…')
-        adb = unpack_platform_tools(archive, Path(os.environ['LOCALAPPDATA']) / 'Android/Sdk')
+        base_sdk = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / '.local/share'))) / 'Android/Sdk'
+        adb = unpack_platform_tools(archive, base_sdk)
     result = subprocess.run([str(adb), 'version'], capture_output=True, text=True, timeout=20,
                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     if result.returncode or 'Android Debug Bridge' not in result.stdout:
-        raise RuntimeError('ADB was extracted but Windows could not run it. See setup diagnostics; do not disable security software.')
+        raise RuntimeError('ADB was extracted but system could not run it. See setup diagnostics; do not disable security software.')
     return adb
 
 

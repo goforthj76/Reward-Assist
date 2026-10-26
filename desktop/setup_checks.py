@@ -7,8 +7,17 @@ import subprocess
 
 def locate_adb():
     local = Path(os.environ.get('LOCALAPPDATA', ''))
-    candidates = [os.environ.get('ADB', ''), shutil.which('adb') or '',
-                  str(local / 'Android/Sdk/platform-tools/adb.exe')]
+    home = Path.home()
+    candidates = [
+        os.environ.get('ADB', ''),
+        shutil.which('adb') or '',
+        str(local / 'Android/Sdk/platform-tools/adb.exe'),
+        str(home / 'Android/Sdk/platform-tools/adb'),
+        str(home / '.local/share/Android/Sdk/platform-tools/adb'),
+        str(home / '.local/share/reward-assist/platform-tools/adb'),
+        '/usr/bin/adb',
+        '/usr/local/bin/adb',
+    ]
     packages = local / 'Microsoft/WinGet/Packages'
     if packages.is_dir():
         candidates.extend(str(p) for p in packages.glob('Google.PlatformTools_*/platform-tools/adb.exe'))

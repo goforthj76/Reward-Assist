@@ -44,7 +44,8 @@ WEB_ROOT = ROOT / "demo"
 
 def choose_data_root() -> Path:
     candidates = [
-        Path(os.environ.get("LOCALAPPDATA", Path.home())) / "RewardsAssistant",
+        Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".local/share"))) / "RewardsAssistant",
+        Path.home() / ".rewards-assistant",
         ROOT / "user_data",
     ]
     for candidate in candidates:
@@ -66,7 +67,8 @@ WEB_PROFILE_ROOT = DATA_ROOT / "web-profiles"
 WEB_SESSION_ROOT = DATA_ROOT / "web-sessions"
 DUTCH_SESSION_ROOT = Path(tempfile.gettempdir()) / "RewardsAssistant-Dutch"
 QR_ROOT = DATA_ROOT / "qr-vault"
-HOST, PORT = "127.0.0.1", 8768
+HOST = os.environ.get("REWARD_ASSIST_HOST", "127.0.0.1")
+PORT = int(os.environ.get("REWARD_ASSIST_PORT", "8768"))
 BUILD_VERSION = "0.5.46"
 VERIFICATION_ORIGIN = "https://db-proj.onrender.com"
 VERIFICATION_API = f"{VERIFICATION_ORIGIN}/api/verification"
@@ -91,30 +93,68 @@ def _blob(data: bytes) -> tuple[DATA_BLOB, object]:
     return DATA_BLOB(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_byte))), buffer
 
 
+def _linux_key() -> bytes:
+    import hashlib
+    machine_id = ""
+    for mid_path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            machine_id = Path(mid_path).read_text(encoding="utf-8").strip()
+            if machine_id:
+                break
+        except Exception:
+            pass
+    seed = f"{machine_id}:{os.environ.get('USER', 'default')}:{uuid.getnode()}:{Path.home()}"
+    return hashlib.sha256(seed.encode("utf-8")).digest()
+
+
+def _linux_crypt(data: bytes, key: bytes, nonce: bytes) -> bytes:
+    import hashlib
+    keystream = bytearray()
+    counter = 0
+    while len(keystream) < len(data):
+        block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
+        keystream.extend(block)
+        counter += 1
+    return bytes(b ^ k for b, k in zip(data, keystream[:len(data)]))
+
+
 def protect(data: bytes) -> bytes:
-    source, keepalive = _blob(data)
-    output = DATA_BLOB()
-    if not ctypes.windll.crypt32.CryptProtectData(
-        ctypes.byref(source), "Rewards Assistant profiles", None, None, None, 0, ctypes.byref(output)
-    ):
-        raise ctypes.WinError()
-    try:
-        return ctypes.string_at(output.pbData, output.cbData)
-    finally:
-        ctypes.windll.kernel32.LocalFree(output.pbData)
+    if sys.platform == "win32" and hasattr(ctypes, "windll"):
+        source, keepalive = _blob(data)
+        output = DATA_BLOB()
+        if not ctypes.windll.crypt32.CryptProtectData(
+            ctypes.byref(source), "Rewards Assistant profiles", None, None, None, 0, ctypes.byref(output)
+        ):
+            raise ctypes.WinError()
+        try:
+            return ctypes.string_at(output.pbData, output.cbData)
+        finally:
+            ctypes.windll.kernel32.LocalFree(output.pbData)
+    else:
+        key = _linux_key()
+        nonce = os.urandom(16)
+        ciphertext = _linux_crypt(data, key, nonce)
+        return b"LNX1" + nonce + ciphertext
 
 
 def unprotect(data: bytes) -> bytes:
-    source, keepalive = _blob(data)
-    output = DATA_BLOB()
-    if not ctypes.windll.crypt32.CryptUnprotectData(
-        ctypes.byref(source), None, None, None, None, 0, ctypes.byref(output)
-    ):
-        raise ctypes.WinError()
-    try:
-        return ctypes.string_at(output.pbData, output.cbData)
-    finally:
-        ctypes.windll.kernel32.LocalFree(output.pbData)
+    if data.startswith(b"LNX1") and len(data) >= 20:
+        nonce = data[4:20]
+        ciphertext = data[20:]
+        key = _linux_key()
+        return _linux_crypt(ciphertext, key, nonce)
+    if sys.platform == "win32" and hasattr(ctypes, "windll"):
+        source, keepalive = _blob(data)
+        output = DATA_BLOB()
+        if not ctypes.windll.crypt32.CryptUnprotectData(
+            ctypes.byref(source), None, None, None, None, 0, ctypes.byref(output)
+        ):
+            raise ctypes.WinError()
+        try:
+            return ctypes.string_at(output.pbData, output.cbData)
+        finally:
+            ctypes.windll.kernel32.LocalFree(output.pbData)
+    raise ValueError("Encrypted profile cannot be opened on this platform.")
 
 
 def load_profiles() -> list[dict[str, str]]:
@@ -146,6 +186,11 @@ def save_profiles(profiles: list[dict[str, str]]) -> None:
         backup = PROFILE_FILE.with_name(f"profiles-unreadable-{stamp}.dat.bak")
         shutil.copy2(PROFILE_FILE, backup)
     PROFILE_FILE.write_bytes(base64.b64encode(protect(json.dumps(profiles).encode("utf-8"))))
+    if sys.platform != "win32":
+        try:
+            os.chmod(PROFILE_FILE, 0o600)
+        except Exception:
+            pass
     PROFILE_WARNING = ""
 
 
@@ -208,12 +253,19 @@ def find_adb() -> str | None:
 
 
 def find_chrome() -> Path | None:
-    candidates = (
+    candidates = [
         Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
         Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
         Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
-    )
-    return next((path for path in candidates if path.exists()), None)
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    return None
 
 
 def find_browser_helper() -> Path | None:
@@ -238,12 +290,27 @@ def open_local_ui() -> None:
     url = f"http://{HOST}:{PORT}/"
     edge = find_edge()
     if edge:
-        subprocess.Popen([
-            str(edge), f"--app={url}", "--start-maximized",
-            "--disable-features=msEdgeSidebarV2",
-        ])
-    else:
-        webbrowser.open(url)
+        try:
+            subprocess.Popen([
+                str(edge), f"--app={url}", "--start-maximized",
+                "--disable-features=msEdgeSidebarV2",
+            ])
+            return
+        except Exception:
+            pass
+    chrome = find_chrome()
+    is_headless = bool(os.environ.get("HEADLESS")) or (sys.platform != "win32" and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"))
+    if not is_headless:
+        if chrome:
+            try:
+                subprocess.Popen([str(chrome), f"--app={url}"])
+                return
+            except Exception:
+                pass
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
 
 
 def list_adb_devices() -> list[dict[str, str]]:
@@ -1975,7 +2042,9 @@ def main() -> None:
             server = ExclusiveThreadingHTTPServer((HOST, PORT), Handler)
             break
         except OSError as exc:
-            if getattr(exc, "winerror", None) != 10048:
+            winerror = getattr(exc, "winerror", None)
+            errno_val = getattr(exc, "errno", None)
+            if winerror != 10048 and errno_val != 98:
                 raise
             # The extension uses this fixed port. Reuse the existing app rather
             # than silently opening a disconnected session on another port.
